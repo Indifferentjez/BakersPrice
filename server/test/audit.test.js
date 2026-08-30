@@ -4,12 +4,20 @@ import { priceBake } from '../lib/cost.js';
 import { auditCalculation } from '../lib/audit.js';
 
 const master = [
-  { name: 'flour', grams: 300, category: 'flour', canonical: 'flour' },
-  { name: 'butter', grams: 150, category: 'fat', canonical: 'butter' },
-  { name: 'sugar', grams: 300, category: 'sugar', canonical: 'caster sugar' },
-  { name: 'eggs', grams: 150, category: 'egg', canonical: 'egg', perEgg: 50 },
-  { name: 'milk', grams: 220, category: 'liquid', canonical: 'milk' },
+  { name: 'flour', grams: 300, category: 'flour', canonical: 'flour', measurementType: 'volume' },
+  { name: 'butter', grams: 150, category: 'fat', canonical: 'butter', measurementType: 'weight' },
+  { name: 'sugar', grams: 300, category: 'sugar', canonical: 'caster-sugar', measurementType: 'volume' },
+  { name: 'eggs', grams: 204, category: 'egg', canonical: 'egg', measurementType: 'weight' },
+  { name: 'milk', grams: 220, category: 'liquid', canonical: 'milk', measurementType: 'volume' },
 ];
+
+const MASTER_PRICES = {
+  flour: { price: 1.2, priceUnit: 'kg', densityGPerCup: 120 },
+  butter: { price: 8, priceUnit: 'kg', densityGPerCup: 227 },
+  'caster-sugar': { price: 1, priceUnit: 'kg', densityGPerCup: 200 },
+  egg: { price: 0.25, priceUnit: 'each', gramsPerUnit: [44, 58] },
+  milk: { price: 0.9, priceUnit: 'litre', densityGPerCup: 240 },
+};
 
 describe('self-audit', () => {
   it('passes a sane in-range calculation', () => {
@@ -43,13 +51,7 @@ describe('self-audit', () => {
       pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 } });
     const price = priceBake({
       scaledIngredients: c.scaledIngredients,
-      priceList: [
-        { name: 'flour', canonical: 'flour', pricePerG: 0.0012 },
-        { name: 'butter', canonical: 'butter', pricePerG: 0.008 },
-        { name: 'sugar', canonical: 'caster sugar', pricePerG: 0.001 },
-        { name: 'eggs', canonical: 'egg', pricePerEgg: 0.25 },
-        { name: 'milk', canonical: 'milk', pricePerG: 0.0009 },
-      ],
+      masterPrices: MASTER_PRICES,
       bake: { labourMinutes: 60, hourlyRate: 12, energyCost: 0.5, packagingCost: 2,
         overheadPct: 15, marginMinPct: 60, marginStdPct: 50, marginPremiumPct: 40 },
     });
@@ -63,10 +65,7 @@ describe('self-audit', () => {
     // price only flour + sugar -> butter, eggs, milk unpriced (big gap)
     const price = priceBake({
       scaledIngredients: c.scaledIngredients,
-      priceList: [
-        { name: 'flour', canonical: 'flour', pricePerG: 0.0012 },
-        { name: 'sugar', canonical: 'caster sugar', pricePerG: 0.001 },
-      ],
+      masterPrices: { flour: MASTER_PRICES.flour, 'caster-sugar': MASTER_PRICES['caster-sugar'] },
       bake: { labourMinutes: 30, hourlyRate: 8, energyCost: 0.2, packagingCost: 0.5,
         overheadPct: 0, marginMinPct: 28, marginStdPct: 50, marginPremiumPct: 65 },
     });

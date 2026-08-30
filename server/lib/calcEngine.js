@@ -148,16 +148,30 @@ export function calculate(input) {
     mid: ((batter.min + batter.max) / 2) / masterBatterG,
   };
 
-  const scaled = master.map((r) => ({
-    name: r.name,
-    canonical: r.canonical ?? null,
-    category: r.category ?? null,
-    // carry the recipe's real per-egg weight through so costing matches the
-    // egg count calcEngine itself uses (large 50 g vs medium 44 g)
-    ...(r.category === 'egg' ? { perEgg: r.perEgg || 50 } : {}),
-    masterGrams: round(Number(r.grams) || 0, 1),
-    grams: round((Number(r.grams) || 0) * sf.mid, 1),
-  }));
+  const scaled = master.map((r) => {
+    const masterGrams = round(Number(r.grams) || 0, 1);
+    if (r.measurementType === 'count' && r.count != null && r.count > 0) {
+      // COUNT stays a count. Scale the number, round to a whole item, and
+      // recompute the estimated weight range from that whole count.
+      const scaledCount = Math.max(1, Math.round(r.count * sf.mid));
+      const per = r.gramsRange ? [r.gramsRange.min / r.count, r.gramsRange.max / r.count] : null;
+      const gramsRange = per ? { min: round(scaledCount * per[0], 1), max: round(scaledCount * per[1], 1) } : null;
+      return {
+        name: r.name, canonical: r.canonical ?? null, category: r.category ?? null,
+        measurementType: 'count', countNoun: r.countNoun ?? null,
+        masterCount: r.count, count: scaledCount,
+        masterGrams,
+        grams: gramsRange ? round((gramsRange.min + gramsRange.max) / 2, 1) : round(masterGrams * sf.mid, 1),
+        gramsRange,
+      };
+    }
+    return {
+      name: r.name, canonical: r.canonical ?? null, category: r.category ?? null,
+      measurementType: r.measurementType ?? null,
+      masterGrams,
+      grams: round(masterGrams * sf.mid, 1),
+    };
+  });
 
   // baked weight
   const ret = retentionWindow(cakeTypeKey);
@@ -168,35 +182,43 @@ export function calculate(input) {
     retentionPct: ret,
   };
 
-  // eggs
-  const eggRow = master.find((r) => r.category === 'egg' && r.grams > 0);
-  const perEgg = eggRow && eggRow.perEgg ? eggRow.perEgg : 50;
-  const scaledEggGrams = scaled
-    .filter((r) => r.category === 'egg')
-    .reduce((a, r) => a + r.grams, 0);
+  // count-based ingredients (eggs, bananas, apples, ...) — keep them as counts,
+  // advise on rounding when the scaled count isn't whole.
   const targetBase = (masterBase || 0) * sf.mid;
-  let eggAdvice = null;
-  if (scaledEggGrams > 0) {
-    const count = scaledEggGrams / perEgg;
-    const rounded = Math.round(count);
-    const fractional = Math.abs(count - rounded) > 0.12;
-    const roundedGrams = rounded * perEgg;
-    const ratioShift = targetBase > 0 ? Math.abs(roundedGrams - scaledEggGrams) / targetBase : 0;
-    eggAdvice = {
-      exactCount: round(count, 2),
-      exactGrams: round(scaledEggGrams, 1),
-      roundedCount: rounded,
-      fractional,
-      ratioShiftPct: round(ratioShift * 100, 1),
-      warnRounding: fractional && ratioShift > 0.05,
-      guidance: fractional
-        ? `Whisk 1–2 eggs and weigh ${round(scaledEggGrams, 0)} g of the beaten egg for accuracy, or use ${rounded} whole egg${rounded === 1 ? '' : 's'}.`
-        : `${rounded} whole egg${rounded === 1 ? '' : 's'}.`,
-      note: fractional && ratioShift > 0.05
-        ? `Rounding to ${rounded} eggs shifts the egg:base ratio by ${round(ratioShift * 100, 1)}% (> 5%) — weigh the beaten egg instead.`
-        : null,
-    };
-  }
+  const countAdvice = master
+    .filter((r) => r.measurementType === 'count' && r.count != null && r.count > 0)
+    .map((r) => {
+      const exact = r.count * sf.mid;
+      const rounded = Math.max(1, Math.round(exact));
+      const fractional = Math.abs(exact - rounded) > 0.12;
+      const perUnitMid = r.gramsRange && r.count
+        ? ((r.gramsRange.min + r.gramsRange.max) / 2) / r.count
+        : (r.grams && r.count ? r.grams / r.count : 0);
+      const shift = targetBase > 0 ? Math.abs((rounded - exact) * perUnitMid) / targetBase : 0;
+      const noun = r.countNoun || 'item';
+      const isEgg = r.category === 'egg';
+      const gr = r.gramsRange && r.count
+        ? { min: round(rounded * (r.gramsRange.min / r.count), 0), max: round(rounded * (r.gramsRange.max / r.count), 0) }
+        : null;
+      return {
+        name: r.name, noun,
+        masterCount: r.count,
+        exactCount: round(exact, 2),
+        roundedCount: rounded,
+        gramsRange: gr,
+        fractional,
+        ratioShiftPct: round(shift * 100, 1),
+        warnRounding: fractional && shift > 0.05,
+        guidance: !fractional
+          ? `${rounded} ${noun}${rounded === 1 ? '' : 's'}${gr ? ` (~${gr.min}–${gr.max} g)` : ''}.`
+          : isEgg
+            ? `use ${rounded} ${noun}${rounded === 1 ? '' : 's'}, or weigh ${round(exact * perUnitMid, 0)} g of beaten egg for accuracy.`
+            : `use ${rounded} ${noun}${rounded === 1 ? '' : 's'}${gr ? ` (~${gr.min}–${gr.max} g)` : ''}.`,
+        note: fractional && shift > 0.05
+          ? `Rounding to ${rounded} shifts this ingredient's share of the dry base by ${round(shift * 100, 1)}% (> 5%).`
+          : null,
+      };
+    });
 
   return {
     master: { batterG: round(masterBatterG, 1), baseG: round(masterBase || 0, 0) },
@@ -218,7 +240,7 @@ export function calculate(input) {
       min: round(baked.min, 0), max: round(baked.max, 0),
       accuracy: baked.accuracy, retentionPct: ret,
     },
-    eggAdvice,
+    countAdvice,
     densitySource: calibrationKPerMl ? 'calibration' : 'generic-fill-table',
     calibrationKPerMl: calibrationKPerMl || null,
     // batter-per-mL-of-pan-volume actually in use (fill x density), and the

@@ -45,6 +45,7 @@ export default function Wizard() {
   const [defaults, setDefaults] = useState(null);
 
   const [calc, setCalc] = useState(null);
+  const [ingredientOverrides, setIngredientOverrides] = useState({});
   const [menuItems, setMenuItems] = useState([]);
   const [quote, setQuote] = useState(null);
   const [llm, setLlm] = useState(true);
@@ -81,6 +82,7 @@ export default function Wizard() {
       setRawInput(r.raw_input || '');
       setRows((r.parsed && r.parsed.length ? r.parsed : r.master).map(norm));
       setTypeOverride(r.type_override || '');
+      setIngredientOverrides(r.ingredientOverrides || {});
       setCalibrations(r.calibrations || []);
       return api.post('/api/parse/resolve', { ingredients: (r.parsed && r.parsed.length ? r.parsed : r.master) });
     }).then((res) => { setResolved(res); setStep('confirm'); })
@@ -162,23 +164,39 @@ export default function Wizard() {
   };
 
   // ================= PAN / CALC =================
+  const calcBody = (rid, ovr) => ({
+    recipeId: rid,
+    pan: cleanPan(pan),
+    cakeTypeKey: typeOverride || undefined,
+    useCalibration,
+    fillPctOverride: fillOverride ? Number(fillOverride) : null,
+    bake: numBake(bake),
+    ingredientOverrides: ovr ?? ingredientOverrides,
+  });
+
   const runCalc = async () => {
     setBusy(true); setError(null);
     try {
       let rid = recipeId;
       if (!rid) { const r = await saveRecipe(); rid = r.id; }
-      const body = {
-        recipeId: rid,
-        pan: cleanPan(pan),
-        cakeTypeKey: typeOverride || undefined,
-        useCalibration,
-        fillPctOverride: fillOverride ? Number(fillOverride) : null,
-        bake: numBake(bake),
-      };
-      const d = await api.post('/api/calc', body);
+      const d = await api.post('/api/calc', calcBody(rid));
       setCalc(d);
       go('result');
     } catch (err) { setError(err); } finally { setBusy(false); }
+  };
+
+  // re-price with a changed set of per-recipe ingredient overrides (from the pricing panel)
+  const recalcWithOverrides = async (ovr) => {
+    setIngredientOverrides(ovr);
+    setBusy(true); setError(null);
+    try {
+      const d = await api.post('/api/calc', calcBody(recipeId, ovr));
+      setCalc(d);
+    } catch (err) { setError(err); } finally { setBusy(false); }
+  };
+  const saveOverridesToRecipe = async (ovr) => {
+    if (!recipeId) return;
+    await api.put(`/api/recipes/${recipeId}`, { onlyTypeOverride: false, ingredientOverrides: ovr, parsed: rows.map(clean), name, allergens, notes, type_override: typeOverride || null }).catch(setError);
   };
 
   const value = { step, stepIndex };
@@ -228,6 +246,7 @@ export default function Wizard() {
         <ResultStep {...{
           calc, onQuote: () => go('quote'), onBack: () => go('pan'),
           menuItems, setMenuItems, pan,
+          ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy,
         }} />
       )}
 
@@ -253,7 +272,14 @@ function norm(r) {
   };
 }
 function clean(r) {
-  const o = { name: (r.name || '').trim(), quantity: r.quantity === '' ? null : Number(r.quantity), unit: r.unit || null, notes: r.notes || null };
+  // send the quantity as the RAW string — the server's parseQty is the only
+  // parser (handles "1 1/2", "½", "2-3"). A baker-typed gram value is an override.
+  const o = {
+    name: (r.name || '').trim(),
+    quantity: r.quantity === '' || r.quantity == null ? null : String(r.quantity).trim(),
+    unit: r.unit || null,
+    notes: r.notes || null,
+  };
   if (r.grams !== '' && r.grams != null) o.grams = Number(r.grams);
   return o;
 }
@@ -295,6 +321,27 @@ function UploadStep({ llm, rawInput, setRawInput, doParseText, doParseFile, star
   );
 }
 
+function gramsApprox(g) { return g == null ? '' : (g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${Math.round(g)} g`); }
+
+function MeasuredCell({ info }) {
+  if (!info) return <span className="muted">…</span>;
+  if (info.grams == null) return <span style={{ color: 'var(--fail)' }}>{info.note || 'needs a weight'}</span>;
+  const est = info.gramsRange
+    ? `${Math.round(info.gramsRange.min)}–${Math.round(info.gramsRange.max)} g`
+    : `~${gramsApprox(info.grams)}`;
+  if (info.measurementType === 'count' && info.count != null) {
+    return (
+      <>
+        <strong>{info.count} {info.countNoun || 'x'}{info.count === 1 ? '' : 's'}</strong>
+        <span className="muted"> · {info.gramsSource === 'manual' ? `weight set to ${gramsApprox(info.grams)}` : `≈ ${est} est.`}</span>
+      </>
+    );
+  }
+  if (info.gramsSource === 'given-weight') return <><strong>{gramsApprox(info.grams)}</strong> <span className="muted">· as written</span></>;
+  if (info.gramsSource === 'manual') return <><strong>{gramsApprox(info.grams)}</strong> <span className="muted">· your weight</span></>;
+  return <><span className="muted">{info.quantity} {info.unit} → </span><strong>{gramsApprox(info.grams)}</strong></>;
+}
+
 function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergens, setAllergens, notes, setNotes, saveRecipe, recipeId, busy, onNext }) {
   const set = (i, k, v) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const add = () => setRows([...rows, blankRow()]);
@@ -311,10 +358,10 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
   return (
     <>
       <div className="panel">
-        <h2>Confirm the ingredients <span className="sub">grams you type always win over the table</span></h2>
+        <h2>Confirm the ingredients <span className="sub">the original measurement is kept — grams are added, not substituted</span></h2>
         <table>
           <thead>
-            <tr><th>Ingredient</th><th style={{ width: 70 }}>Qty</th><th style={{ width: 90 }}>Unit</th><th style={{ width: 120 }}>Grams</th><th>Resolved</th><th /></tr>
+            <tr><th>Ingredient</th><th style={{ width: 64 }}>Qty</th><th style={{ width: 84 }}>Unit</th><th>Measured as</th><th style={{ width: 130 }}>Override wt (g)</th><th /></tr>
           </thead>
           <tbody>
             {rows.map((r, i) => {
@@ -324,12 +371,11 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
                 <tr key={i} className={flagged ? 'flagged' : ''}>
                   <td><input value={r.name} onChange={(e) => set(i, 'name', e.target.value)} /></td>
                   <td><input value={r.quantity} onChange={(e) => set(i, 'quantity', e.target.value)} /></td>
-                  <td><input value={r.unit} onChange={(e) => set(i, 'unit', e.target.value)} placeholder="g / cup…" /></td>
-                  <td><input value={r.grams} onChange={(e) => set(i, 'grams', e.target.value)} placeholder={info?.grams != null ? '' : 'enter g'} /></td>
-                  <td style={{ fontSize: '.85rem' }}>
-                    {info?.grams != null
-                      ? <>{Math.round(info.grams)} g <span className="muted">· {info.category}{info.gramsSource === 'given-weight' ? ' · yours' : info.gramsSource === 'table' ? ' · table' : ''}</span></>
-                      : <span style={{ color: 'var(--fail)' }}>{info?.note || 'needs a weight'}</span>}
+                  <td><input value={r.unit} onChange={(e) => set(i, 'unit', e.target.value)} placeholder="g / cup / each" /></td>
+                  <td style={{ fontSize: '.85rem' }}><MeasuredCell info={info} /></td>
+                  <td>
+                    <input value={r.grams ?? ''} onChange={(e) => set(i, 'grams', e.target.value)}
+                      placeholder={info?.grams != null ? 'optional' : 'enter g'} />
                   </td>
                   <td style={{ textAlign: 'right' }}><button className="subtle sm" onClick={() => del(i)}>✕</button></td>
                 </tr>
@@ -551,7 +597,84 @@ function Calibrator({ recipeId, onSaved }) {
   );
 }
 
-function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan }) {
+function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }) {
+  const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(ingredientOverrides || {})));
+  const [pushMsg, setPushMsg] = useState(null);
+  const lines = price.lines || [];
+  const setOv = (key, patch) => setDraft((d) => ({ ...d, [key]: { ...(d[key] || {}), ...patch } }));
+  const clearOv = (key) => setDraft((d) => { const n = { ...d }; delete n[key]; return n; });
+  const dirty = JSON.stringify(draft) !== JSON.stringify(ingredientOverrides || {});
+
+  return (
+    <div className="panel">
+      <h3>Ingredient prices <span className="muted" style={{ fontWeight: 400 }}>— from the master catalogue; override for this recipe only</span></h3>
+      <table>
+        <thead><tr><th>Ingredient</th><th>Amount</th><th>Source</th><th>Unit £</th><th>Line £</th><th>Override for this recipe</th></tr></thead>
+        <tbody>
+          {lines.map((l) => {
+            const key = l.key;
+            const ov = key ? draft[key] : null;
+            return (
+              <tr key={l.name} className={l.basis === 'missing' ? 'flagged' : ''}>
+                <td>{l.name}{key ? '' : <span className="muted"> · not in catalogue</span>}</td>
+                <td className="muted">{l.count != null ? `${l.count}×` : `${Math.round(l.grams)} g`}</td>
+                <td>{l.basis === 'override' ? <span className="pill">recipe override</span>
+                  : l.basis === 'master' ? <span className="muted">master</span>
+                  : <span style={{ color: 'var(--fail)' }}>no price</span>}</td>
+                <td className="muted">{l.unitPrice != null ? `£${l.unitPrice.toFixed(l.unit === '/each' ? 3 : 5)}${l.unit}` : '—'}</td>
+                <td>{l.cost != null ? <Money amount={l.cost} currency={cur} /> : '—'}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  {key ? (
+                    <>
+                      <input style={{ width: 70, padding: '3px 6px' }} type="number" step="0.01" placeholder="£"
+                        value={ov?.price ?? ''} onChange={(e) => setOv(key, { price: e.target.value })} />
+                      <select style={{ width: 74, padding: '3px 4px', marginLeft: 4 }}
+                        value={ov?.priceUnit ?? 'kg'} onChange={(e) => setOv(key, { priceUnit: e.target.value })}>
+                        {['kg', 'litre', 'each', 'g', 'ml'].map((u) => <option key={u}>{u}</option>)}
+                      </select>
+                      {ov && <button className="subtle sm" style={{ marginLeft: 4 }} onClick={() => clearOv(key)}>✕</button>}
+                    </>
+                  ) : <span className="muted">add it under Ingredients</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="sm" disabled={busy || !dirty} onClick={() => recalcWithOverrides(cleanOverrides(draft))}>Apply overrides &amp; re-price</button>
+        <button className="ghost sm" disabled={busy} onClick={async () => { await saveOverridesToRecipe(cleanOverrides(draft)); setPushMsg('Saved to recipe.'); }}>Save overrides to this recipe</button>
+        <button className="subtle sm" disabled={busy || !Object.keys(draft).length}
+          onClick={async () => {
+            const r = await pushToMaster(draft, price.lines);
+            setPushMsg(r);
+          }}>Push overrides to master catalogue</button>
+        {pushMsg && <span className="muted">{pushMsg}</span>}
+      </div>
+    </div>
+  );
+}
+function cleanOverrides(d) {
+  const out = {};
+  for (const [k, v] of Object.entries(d || {})) {
+    if (v && v.price !== '' && v.price != null && Number.isFinite(Number(v.price))) {
+      out[k] = { price: Number(v.price), priceUnit: v.priceUnit || 'kg' };
+    }
+  }
+  return out;
+}
+async function pushToMaster(draft, lines) {
+  const clean = cleanOverrides(draft);
+  const keys = Object.keys(clean);
+  if (!keys.length) return 'No numeric overrides to push.';
+  let n = 0;
+  for (const key of keys) {
+    try { await api.put(`/api/master-ingredients/${key}`, { price: clean[key].price, priceUnit: clean[key].priceUnit }); n += 1; } catch { /* ignore */ }
+  }
+  return `Updated ${n} master price(s).`;
+}
+
+function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }) {
   const { calc: c, price, audit, densitySource, cakeTypeKey } = calc;
   const cur = price.currency;
   const addToMenu = () => {
@@ -579,25 +702,40 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan }) {
             <tr><td>Implied batter density</td><td>{c.impliedDensity} g/mL</td><td><Badge accuracy="CALCULATED" /></td></tr>
           </tbody>
         </table>
-        {c.eggAdvice && (
-          <div className={c.eggAdvice.warnRounding ? 'warnbox' : 'okbox'} style={{ marginTop: 12 }}>
-            <strong>Eggs:</strong> {c.eggAdvice.guidance} {c.eggAdvice.note || ''}
+        {(c.countAdvice || []).map((a, i) => (
+          <div key={i} className={a.warnRounding ? 'warnbox' : 'okbox'} style={{ marginTop: 12 }}>
+            <strong style={{ textTransform: 'capitalize' }}>{a.noun}s:</strong> {a.guidance} {a.note || ''}
           </div>
-        )}
+        ))}
       </div>
 
       <div className="panel">
         <h3>Scaled ingredient list (target size)</h3>
         <table>
-          <thead><tr><th>Ingredient</th><th>Master</th><th>Scaled</th></tr></thead>
+          <thead><tr><th>Ingredient</th><th>Master recipe</th><th>Scaled</th></tr></thead>
           <tbody>
             {c.scaledIngredients.map((r, i) => (
-              <tr key={i}><td>{r.name}</td><td className="muted">{r.masterGrams} g</td><td>{r.grams} g</td></tr>
+              <tr key={i}>
+                <td>{r.name}</td>
+                <td className="muted">
+                  {r.measurementType === 'count' && r.masterCount != null
+                    ? `${r.masterCount} ${r.countNoun || 'x'}${r.masterCount === 1 ? '' : 's'}`
+                    : `${r.masterGrams} g`}
+                </td>
+                <td>
+                  {r.measurementType === 'count' && r.count != null
+                    ? <><strong>{r.count} {r.countNoun || 'x'}{r.count === 1 ? '' : 's'}</strong>
+                        {r.gramsRange && <span className="muted"> (~{Math.round(r.gramsRange.min)}–{Math.round(r.gramsRange.max)} g)</span>}</>
+                    : `${r.grams} g`}
+                </td>
+              </tr>
             ))}
           </tbody>
         </table>
-        <p className="muted" style={{ fontSize: '.82rem' }}>List uses the mid scaling factor; batter/baked weights above stay as ranges. <Badge accuracy="CALCULATED" /></p>
+        <p className="muted" style={{ fontSize: '.82rem' }}>Weight rows scale by the mid factor; count rows scale to a whole number and show the estimated weight range. <Badge accuracy="CALCULATED" /></p>
       </div>
+
+      <IngredientPricePanel {...{ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }} />
 
       <div className="panel">
         <h3>Cost &amp; price <span className="muted" style={{ fontWeight: 400 }}>— baker-only, never shown to customers</span></h3>

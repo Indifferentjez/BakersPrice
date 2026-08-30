@@ -6,14 +6,17 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import './db.js';
+import { bootstrap as bootstrapIngredients } from './lib/masterIngredients.js';
 import parseRoutes from './routes/parse.js';
 import recipeRoutes from './routes/recipes.js';
-import ingredientRoutes from './routes/ingredients.js';
+import masterIngredientRoutes from './routes/masterIngredients.js';
 import defaultsRoutes from './routes/defaults.js';
 import calibrationRoutes from './routes/calibrations.js';
 import calcRoutes from './routes/calc.js';
 import quoteRoutes from './routes/quotes.js';
 import { llmAvailable } from './anthropic.js';
+
+bootstrapIngredients(); // seed master_ingredients + migrate legacy prices on first run
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -26,7 +29,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, llm: llmAvailable() }
 
 app.use('/api/parse', parseRoutes);
 app.use('/api/recipes', recipeRoutes);
-app.use('/api/ingredients', ingredientRoutes);
+app.use('/api/master-ingredients', masterIngredientRoutes);
 app.use('/api/defaults', defaultsRoutes);
 app.use('/api/calibrations', calibrationRoutes);
 app.use('/api/calc', calcRoutes);

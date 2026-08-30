@@ -59,43 +59,46 @@ describe('calibration back-calc — reference bake regression', () => {
 
 describe('full calculation', () => {
   const master = [
-    { name: 'flour', grams: 300, category: 'flour', canonical: 'flour' },
-    { name: 'butter', grams: 150, category: 'fat', canonical: 'butter' },
-    { name: 'sugar', grams: 300, category: 'sugar', canonical: 'caster sugar' },
-    { name: 'eggs', grams: 150, category: 'egg', canonical: 'egg', perEgg: 50 },
-    { name: 'milk', grams: 220, category: 'liquid', canonical: 'milk' },
-    { name: 'baking powder', grams: 10, category: 'leavening', canonical: 'baking powder' },
+    { name: 'flour', grams: 300, category: 'flour', canonical: 'flour', measurementType: 'volume' },
+    { name: 'butter', grams: 150, category: 'fat', canonical: 'butter', measurementType: 'weight' },
+    { name: 'sugar', grams: 300, category: 'sugar', canonical: 'caster-sugar', measurementType: 'volume' },
+    { name: 'eggs', grams: 210, category: 'egg', canonical: 'egg', measurementType: 'count', count: 4, countNoun: 'egg', gramsRange: { min: 200, max: 220 } },
+    { name: 'milk', grams: 220, category: 'liquid', canonical: 'milk', measurementType: 'volume' },
+    { name: 'baking powder', grams: 10, category: 'leavening', canonical: 'baking-powder', measurementType: 'volume' },
   ];
   const base = 300;
 
-  it('scales the ingredient list by targetBatter / masterBatter', () => {
+  it('scales weight/volume rows by grams and keeps count rows as counts', () => {
     const c = calculate({
       master, base, cakeTypeKey: 'butter-cake',
       pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 },
     });
-    const masterBatter = 1130;
-    expect(c.master.batterG).toBe(masterBatter);
-    // every scaled row = master row * mid scaling factor
+    expect(c.master.batterG).toBe(1190); // count-egg grams are in the batter total
+
     for (const row of c.scaledIngredients) {
       const src = master.find((m) => m.name === row.name);
-      expect(row.grams).toBeCloseTo(src.grams * c.scalingFactor.mid, 0);
+      if (row.measurementType === 'count') {
+        expect(Number.isInteger(row.count)).toBe(true);
+        expect(row.count).toBe(Math.round(src.count * c.scalingFactor.mid));
+        expect(row.gramsRange.min).toBeLessThan(row.gramsRange.max);
+        expect(row.masterCount).toBe(src.count);
+      } else {
+        expect(row.grams).toBeCloseTo(src.grams * c.scalingFactor.mid, 0);
+      }
     }
-    // batter and baked weight are ranges, never single numbers
+    // ranges, never single numbers; moisture loss
     expect(c.batter.max).toBeGreaterThan(c.batter.min);
-    expect(c.bakedWeight.max).toBeGreaterThan(c.bakedWeight.min);
-    // baked < batter (moisture loss)
     expect(c.bakedWeight.max).toBeLessThan(c.batter.max);
-    // scaled egg rows carry the master's per-egg weight through for costing
-    const eggRow = c.scaledIngredients.find((r) => r.category === 'egg');
-    expect(eggRow.perEgg).toBe(50);
-    expect(c.scaledIngredients.find((r) => r.category === 'flour').perEgg).toBeUndefined();
   });
 
-  it('propagates a medium-egg per-egg weight (44 g) onto scaled rows', () => {
-    const med = master.map((r) => (r.category === 'egg' ? { ...r, perEgg: 44 } : r));
-    const c = calculate({ master: med, base, cakeTypeKey: 'butter-cake',
-      pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 } });
-    expect(c.scaledIngredients.find((r) => r.category === 'egg').perEgg).toBe(44);
+  it('a count ingredient never becomes grams-only when scaled', () => {
+    const c = calculate({ master, base, cakeTypeKey: 'butter-cake',
+      pan: { shape: 'round', unit: 'in', diameter: 11, depth: 3 } });
+    const egg = c.scaledIngredients.find((r) => r.category === 'egg');
+    expect(egg.measurementType).toBe('count');
+    expect(egg.count).toBeGreaterThan(4);          // scaled up
+    expect(egg.countNoun).toBe('egg');
+    expect(egg.gramsRange).toBeTruthy();           // estimate still provided
   });
 
   it('uses a saved calibration constant instead of the generic fill table', () => {
@@ -114,15 +117,16 @@ describe('full calculation', () => {
     expect(mid).toBeCloseTo(generic.pan.volumeMl * 0.70, 0);
   });
 
-  it('flags fractional eggs with weigh-the-beaten-egg guidance', () => {
+  it('countAdvice covers each count ingredient; fractional eggs get weigh-the-egg guidance', () => {
     const c = calculate({
       master, base, cakeTypeKey: 'butter-cake',
       pan: { shape: 'round', unit: 'in', diameter: 7, depth: 2.5 },
     });
-    expect(c.eggAdvice).toBeTruthy();
-    if (c.eggAdvice.fractional) {
-      expect(c.eggAdvice.guidance).toMatch(/weigh/i);
-    }
+    expect(Array.isArray(c.countAdvice)).toBe(true);
+    const egg = c.countAdvice.find((a) => a.noun === 'egg');
+    expect(egg).toBeTruthy();
+    expect(Number.isInteger(egg.roundedCount)).toBe(true);
+    if (egg.fractional) expect(egg.guidance).toMatch(/weigh|egg/i);
   });
 
   it('fill tables match the brief', () => {
