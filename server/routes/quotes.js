@@ -136,17 +136,19 @@ router.post('/', (req, res) => {
   res.status(201).json(hydrate(getQuote.get(info.lastInsertRowid)));
 });
 
+// Response for POST / and GET /:id. Customer-SAFE by construction: it is exactly
+// the whitelisted customer DTO plus a couple of identifiers the create-flow UI
+// needs. No cost / margin / overhead / tier / floor / estimate-breakdown field is
+// ever emitted on a per-quote GET — the baker's error breakdown lives on the
+// calculation (`/api/calc`), not on the quote.
 function hydrate(q) {
   return {
-    id: q.id, mode: q.mode, createdAt: q.created_at, isEstimate: !!q.is_estimate,
-    bakerView: {
-      ...q,
-      menu: safeParse(q.menu_json, null),
-      estimate: safeParse(q.estimate_json, null),
-      shareUrl: `/q/${q.id}`,
-      pdfUrl: `/api/quotes/${q.id}/pdf`,
-    },
-    customerView: customerDto(q),
+    id: q.id,
+    createdAt: q.created_at,
+    isEstimate: !!q.is_estimate,
+    shareUrl: `/q/${q.id}`,
+    pdfUrl: `/api/quotes/${q.id}/pdf`,
+    ...customerDto(q),
   };
 }
 
