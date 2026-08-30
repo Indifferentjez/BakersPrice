@@ -1,0 +1,57 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploy: render.com dashboard -> New + -> Blueprint -> pick the
+# Indifferentjez/BakersPrice repo -> Apply. Render reads this file and creates
+# the service. First build + deploy takes ~3-5 min; you get a
+# https://bakers-price-XXXX.onrender.com URL.
+#
+# ⚠ FREE-TIER CONFIG. Two consequences:
+#   1. The service sleeps after ~15 min idle (first request after that is slow).
+#   2. The filesystem is wiped on every sleep and every redeploy, so the SQLite
+#      database does NOT persist — recipes / prices / quotes you enter are lost
+#      when it sleeps. `npm run seed` on start re-adds the sample recipe so the
+#      app is never empty. Fine for testing; not for real use.
+#
+# To PERSIST data: change `plan: free` -> `plan: starter` (~$7/mo), then
+# uncomment the `disk:` block and the DB_PATH env var at the bottom.
+#
+# ⚠ NO AUTH. This deploy is fully open — anyone with the URL can read and edit
+# everything and (if ANTHROPIC_API_KEY is set) spend your Anthropic credits.
+
+services:
+  - type: web
+    name: bakers-price
+    runtime: node
+    plan: free
+    region: frankfurt          # oregon | ohio | virginia | frankfurt | singapore
+    branch: main
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm run seed || true && npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.15.1
+
+      # Recipe photo / PDF / paste auto-parsing via the Claude API.
+      # LEAVE UNSET to keep it off — the app is public and unauthenticated, so a
+      # set key means anyone can run up your Anthropic bill. If you do set it,
+      # add a spend cap in the Anthropic console first. Manual recipe entry
+      # works regardless.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # Sonnet is ~3x faster and much cheaper than the claude-opus-5 default —
+      # the better choice for a hosted test. Set to claude-opus-5 for top quality.
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
+
+      # --- uncomment together with the disk block below (paid plan) ---
+      # - key: DB_PATH
+      #   value: /data/app.db
+
+    # --- persistent storage (requires plan: starter or higher) ---
+    # disk:
+    #   name: data
+    #   mountPath: /data
+    #   sizeGB: 1
