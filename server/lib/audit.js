@@ -52,14 +52,17 @@ export function auditCalculation(calc, price) {
     add('ok', 'Scaling factor', `${sf}x the master recipe — inside the safe 0.25x–4x linear range.`);
   }
 
-  // 3. egg practicality
-  if (calc.eggAdvice?.fractional) {
-    const e = calc.eggAdvice;
-    add(e.warnRounding ? 'fail' : 'warn', 'Fractional eggs',
-      `Scaled egg = ${e.exactGrams} g (${e.exactCount} eggs). ${e.guidance}` +
-      (e.warnRounding ? ` Rounding to ${e.roundedCount} shifts egg:base by ${e.ratioShiftPct}% (> 5%).` : ''));
-  } else if (calc.eggAdvice) {
-    add('ok', 'Eggs', calc.eggAdvice.guidance);
+  // 3. count-based ingredients (eggs, bananas, ...) — practicality of scaling
+  const advice = calc.countAdvice || [];
+  const fractional = advice.filter((a) => a.fractional);
+  if (fractional.length) {
+    for (const a of fractional) {
+      add(a.warnRounding ? 'fail' : 'warn', `Fractional ${a.noun}`,
+        `Scales to ${a.exactCount} ${a.noun}${a.exactCount === 1 ? '' : 's'} — ${a.guidance}` +
+        (a.note ? ` ${a.note}` : ''));
+    }
+  } else if (advice.length) {
+    add('ok', 'Count ingredients', advice.map((a) => a.guidance).join(' '));
   }
 
   // 4. pan assumptions surfaced

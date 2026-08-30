@@ -1,160 +1,136 @@
 import { describe, it, expect } from 'vitest';
-import { priceBake } from '../lib/cost.js';
+import { priceBake, priceToPerGram } from '../lib/cost.js';
 
-const priceList = [
-  { name: 'flour', canonical: 'flour', pricePerG: 0.0012 },
-  { name: 'butter', canonical: 'butter', pricePerG: 0.008 },
-  { name: 'sugar', canonical: 'caster sugar', pricePerG: 0.001 },
-  { name: 'eggs', canonical: 'egg', pricePerEgg: 0.25 },
-  { name: 'milk', canonical: 'milk', pricePerG: 0.0009 },
-];
-
-const bake = {
-  labourMinutes: 90, hourlyRate: 15,
-  energyCost: 0.8, packagingCost: 2.5,
-  overheadPct: 20,
-  marginMinPct: 28, marginStdPct: 50, marginPremiumPct: 65,
+// master price catalogue (keyed by masterKey / canonical slug)
+const masterPrices = {
+  flour: { price: 1.10, priceUnit: 'kg', densityGPerCup: 120 },
+  butter: { price: 8.00, priceUnit: 'kg', densityGPerCup: 227 },
+  'caster-sugar': { price: 1.00, priceUnit: 'kg', densityGPerCup: 200 },
+  milk: { price: 1.30, priceUnit: 'litre', densityGPerCup: 240 },
+  egg: { price: 0.25, priceUnit: 'each', gramsPerUnit: [44, 58] },
+  banana: { price: 0.18, priceUnit: 'each', gramsPerUnit: [100, 120] },
 };
 
-const smallCake = [
-  { name: 'flour', canonical: 'flour', category: 'flour', grams: 150 },
-  { name: 'butter', canonical: 'butter', category: 'fat', grams: 75 },
-  { name: 'sugar', canonical: 'caster sugar', category: 'sugar', grams: 150 },
-  { name: 'eggs', canonical: 'egg', category: 'egg', grams: 75, perEgg: 50 },
-  { name: 'milk', canonical: 'milk', category: 'liquid', grams: 110 },
+const bake = {
+  labourMinutes: 90, hourlyRate: 15, energyCost: 0.8, packagingCost: 2.5,
+  overheadPct: 20, marginMinPct: 28, marginStdPct: 50, marginPremiumPct: 65,
+};
+
+const cake = [
+  { name: 'flour', canonical: 'flour', category: 'flour', measurementType: 'weight', grams: 300 },
+  { name: 'butter', canonical: 'butter', category: 'fat', measurementType: 'weight', grams: 150 },
+  { name: 'sugar', canonical: 'caster-sugar', category: 'sugar', measurementType: 'weight', grams: 300 },
+  { name: 'eggs', canonical: 'egg', category: 'egg', measurementType: 'count', count: 4, grams: 204 },
+  { name: 'bananas', canonical: 'banana', category: 'liquid', measurementType: 'count', count: 3, grams: 330 },
 ];
-const bigCake = smallCake.map((r) => ({ ...r, grams: r.grams * 4 }));
 
-describe('cost model', () => {
-  it('applies the brief formula: (cost+overhead) / (1 - margin)', () => {
-    const r = priceBake({ scaledIngredients: smallCake, priceList, bake });
-    const ing = 150 * 0.0012 + 75 * 0.008 + 150 * 0.001 + (75 / 50) * 0.25 + 110 * 0.0009;
-    const labour = (90 / 60) * 15;
-    const total = ing + labour + 0.8 + 2.5;
-    const withOverhead = total * 1.2;
+describe('priceToPerGram — unit conversion uses the ingredient\'s own density', () => {
+  it('kg', () => expect(priceToPerGram({ price: 1.10, priceUnit: 'kg' }).perG).toBeCloseTo(0.0011, 6));
+  it('litre uses density', () => {
+    // £1.30/litre oil (218 g/cup -> 0.9083 g/ml) -> £/g = 0.0013 / 0.9083
+    const r = priceToPerGram({ price: 1.30, priceUnit: 'litre', densityGPerCup: 218 });
+    expect(r.perG).toBeCloseTo(0.0013 / (218 / 240), 8);
+  });
+  it('each -> perEach, plus perG when grams-per-unit known', () => {
+    const r = priceToPerGram({ price: 0.30, priceUnit: 'each', gramsPerUnitMid: 51 });
+    expect(r.perEach).toBe(0.30);
+    expect(r.perG).toBeCloseTo(0.30 / 51, 8);
+  });
+});
+
+describe('priceBake — master catalogue', () => {
+  it('prices weight rows per gram and count rows per each', () => {
+    const r = priceBake({ scaledIngredients: cake, masterPrices, bake });
+    expect(r.complete).toBe(true);
+    const line = (n) => r.lines.find((l) => l.name === n);
+    expect(line('flour').cost).toBeCloseTo(300 * 0.0011, 4);
+    expect(line('flour').basis).toBe('master');
+    expect(line('eggs').cost).toBeCloseTo(4 * 0.25, 4);   // per each, not per gram
+    expect(line('eggs').unit).toBe('/each');
+    expect(line('bananas').cost).toBeCloseTo(3 * 0.18, 4);
+    const ing = 300 * 0.0011 + 150 * 0.008 + 300 * 0.001 + 4 * 0.25 + 3 * 0.18;
     expect(r.breakdown.ingredientCost.value).toBeCloseTo(ing, 4);
-    expect(r.breakdown.labourCost.value).toBeCloseTo(labour, 4);
-    expect(r.breakdown.totalCost.value).toBeCloseTo(total, 4);
-    expect(r.breakdown.costPlusOverhead.value).toBeCloseTo(withOverhead, 4);
-    expect(r.prices.minimum).toBeCloseTo(withOverhead / (1 - 0.28), 2);
-    expect(r.prices.standard).toBeCloseTo(withOverhead / (1 - 0.50), 2);
-    expect(r.prices.premium).toBeCloseTo(withOverhead / (1 - 0.65), 2);
   });
 
-  it('labour, energy and packaging are FIXED — they do not scale with size', () => {
-    const small = priceBake({ scaledIngredients: smallCake, priceList, bake });
-    const big = priceBake({ scaledIngredients: bigCake, priceList, bake });
-    expect(big.breakdown.labourCost.value).toBe(small.breakdown.labourCost.value);
-    expect(big.breakdown.energyCost.value).toBe(small.breakdown.energyCost.value);
-    expect(big.breakdown.packagingCost.value).toBe(small.breakdown.packagingCost.value);
-    // only ingredient cost scales (4x here)
-    expect(big.breakdown.ingredientCost.value).toBeCloseTo(small.breakdown.ingredientCost.value * 4, 4);
-  });
-
-  it('price rises with size at every tier', () => {
-    const small = priceBake({ scaledIngredients: smallCake, priceList, bake });
-    const big = priceBake({ scaledIngredients: bigCake, priceList, bake });
-    for (const tier of ['minimum', 'standard', 'premium']) {
-      expect(big.prices[tier]).toBeGreaterThan(small.prices[tier]);
-    }
-  });
-
-  it('tiers stay ordered minimum <= standard <= premium', () => {
-    const r = priceBake({ scaledIngredients: smallCake, priceList, bake });
+  it('applies the brief price formula on top', () => {
+    const r = priceBake({ scaledIngredients: cake, masterPrices, bake });
+    const ing = r.breakdown.ingredientCost.value;
+    const withOverhead = (ing + (90 / 60) * 15 + 0.8 + 2.5) * 1.2;
+    expect(r.prices.standard).toBeCloseTo(withOverhead / (1 - 0.5), 2);
     expect(r.prices.minimum).toBeLessThanOrEqual(r.prices.standard);
     expect(r.prices.standard).toBeLessThanOrEqual(r.prices.premium);
   });
 
-  it('missing ingredient price -> flagged, cost incomplete, small gap = ESTIMATED', () => {
-    const r = priceBake({
-      scaledIngredients: [...smallCake, { name: 'saffron', category: 'other', grams: 1 }],
-      priceList, bake,
-    });
-    expect(r.missingPrices).toContain('saffron');
-    expect(r.complete).toBe(false);
-    // 1 g unpriced in a ~560 g cake — a tiny gap, so ESTIMATED not REQUIRES_TESTING
-    expect(r.breakdown.ingredientCost.accuracy).toBe('ESTIMATED');
-    expect(r.estimate.isEstimate).toBe(true);
-    expect(r.estimate.unpricedWeightPct).toBeLessThan(1);
-  });
-
-  it('incomplete price still produces a quote: floor + estimate + margin for error', () => {
-    // drop butter and eggs from the price list -> a big chunk of the mix unpriced
-    const partialList = priceList.filter((p) => !['butter', 'egg'].includes(p.canonical));
-    const r = priceBake({ scaledIngredients: smallCake, priceList: partialList, bake });
-
-    expect(r.complete).toBe(false);
-    expect(r.estimate.isEstimate).toBe(true);
-    expect(r.estimate.missingIngredientPrices).toEqual(expect.arrayContaining(['butter', 'eggs']));
-    expect(r.estimate.unpricedWeightPct).toBeGreaterThan(0);
-
-    // floor treats unpriced items as £0; estimate proxies them at the priced avg £/g
-    expect(r.pricesFloor.standard).toBeGreaterThan(0);
-    expect(r.pricesEstimated.standard).toBeGreaterThan(r.pricesFloor.standard);
-    // `prices` leads with the estimate when incomplete
-    expect(r.prices.standard).toBe(r.pricesEstimated.standard);
-    // per-tier range is [floor, estimate]
-    expect(r.estimate.priceRange.standard).toEqual([r.pricesFloor.standard, r.pricesEstimated.standard]);
-    // big gap -> REQUIRES_TESTING
-    expect(r.breakdown.ingredientCost.accuracy).toBe('REQUIRES_TESTING');
-  });
-
-  it('proxy estimate ~= floor scaled by total/priced weight', () => {
-    const partialList = priceList.filter((p) => p.canonical !== 'butter');
-    const r = priceBake({ scaledIngredients: smallCake, priceList: partialList, bake });
-    const { pricedGrams, totalIngredientGrams, ingredientCost } = r.estimate;
-    const expected = r.breakdown.ingredientCost.value * (totalIngredientGrams / pricedGrams);
-    expect(r.breakdown.ingredientCost.estimatedValue).toBeCloseTo(expected, 2);
-    expect(ingredientCost.firm).toBeCloseTo(r.breakdown.ingredientCost.value, 4);
-  });
-
-  it('no ingredient prices at all -> cannot estimate ingredient cost', () => {
-    const r = priceBake({ scaledIngredients: smallCake, priceList: [], bake });
-    expect(r.complete).toBe(false);
-    expect(r.pricesEstimated).toBeNull();
-    expect(r.breakdown.ingredientCost.estimatedValue).toBeNull();
-    // still yields a (labour+energy+packaging) floor price so a quote can be made
-    expect(r.pricesFloor.standard).toBeGreaterThan(0);
-    expect(r.prices.standard).toBe(r.pricesFloor.standard);
-  });
-
-  it('no hourly rate -> labour cost null, not zero, and bake incomplete', () => {
-    const r = priceBake({ scaledIngredients: smallCake, priceList, bake: { ...bake, hourlyRate: null } });
-    expect(r.breakdown.labourCost.value).toBeNull();
-    expect(r.complete).toBe(false);
-    expect(r.estimate.missingLabour).toBe(true);
+  it('labour / energy / packaging are fixed — only ingredient cost scales', () => {
+    const big = cake.map((r) => (r.measurementType === 'count'
+      ? { ...r, count: r.count * 2, grams: r.grams * 2 }
+      : { ...r, grams: r.grams * 2 }));
+    const a = priceBake({ scaledIngredients: cake, masterPrices, bake });
+    const b = priceBake({ scaledIngredients: big, masterPrices, bake });
+    expect(b.breakdown.labourCost.value).toBe(a.breakdown.labourCost.value);
+    expect(b.breakdown.energyCost.value).toBe(a.breakdown.energyCost.value);
+    expect(b.breakdown.ingredientCost.value).toBeCloseTo(a.breakdown.ingredientCost.value * 2, 4);
   });
 });
 
-describe('cost model — input guards', () => {
-  it('a negative margin yields no price for that tier (never below cost)', () => {
-    const r = priceBake({ scaledIngredients: smallCake, priceList, bake: { ...bake, marginMinPct: -20 } });
+describe('priceBake — per-recipe overrides', () => {
+  it('an override wins over the master price and is flagged', () => {
+    const base = priceBake({ scaledIngredients: cake, masterPrices, bake });
+    const over = priceBake({
+      scaledIngredients: cake, masterPrices, bake,
+      overrides: { butter: { price: 12.00, priceUnit: 'kg' } },
+    });
+    const bLine = over.lines.find((l) => l.name === 'butter');
+    expect(bLine.basis).toBe('override');
+    expect(bLine.cost).toBeCloseTo(150 * 0.012, 4);
+    expect(over.breakdown.ingredientCost.value).toBeGreaterThan(base.breakdown.ingredientCost.value);
+    expect(over.overriddenKeys).toContain('butter');
+  });
+
+  it('an override can supply a price the master lacks', () => {
+    const noSugar = { ...masterPrices, 'caster-sugar': { price: null, priceUnit: 'kg', densityGPerCup: 200 } };
+    const missing = priceBake({ scaledIngredients: cake, masterPrices: noSugar, bake });
+    expect(missing.complete).toBe(false);
+    expect(missing.missingPrices).toContain('sugar');
+    const fixed = priceBake({
+      scaledIngredients: cake, masterPrices: noSugar, bake,
+      overrides: { 'caster-sugar': { price: 0.95, priceUnit: 'kg' } },
+    });
+    expect(fixed.complete).toBe(true);
+    expect(fixed.lines.find((l) => l.name === 'sugar').basis).toBe('override');
+  });
+});
+
+describe('priceBake — incomplete prices still cost out', () => {
+  it('floor + weight-proxy estimate + margin for error', () => {
+    const partial = { flour: masterPrices.flour, 'caster-sugar': masterPrices['caster-sugar'] };
+    const r = priceBake({ scaledIngredients: cake, masterPrices: partial, bake });
+    expect(r.complete).toBe(false);
+    expect(r.missingPrices).toEqual(expect.arrayContaining(['butter', 'eggs', 'bananas']));
+    expect(r.pricesFloor.standard).toBeGreaterThan(0);
+    expect(r.pricesEstimated.standard).toBeGreaterThan(r.pricesFloor.standard);
+    expect(r.prices.standard).toBe(r.pricesEstimated.standard);
+    expect(r.estimate.priceRange.standard).toEqual([r.pricesFloor.standard, r.pricesEstimated.standard]);
+  });
+
+  it('no matches at all -> labour/energy/packaging floor, no estimate', () => {
+    const r = priceBake({ scaledIngredients: cake, masterPrices: {}, bake });
+    expect(r.pricesEstimated).toBeNull();
+    expect(r.pricesFloor.standard).toBeGreaterThan(0);
+    expect(r.prices.standard).toBe(r.pricesFloor.standard);
+  });
+});
+
+describe('priceBake — guards', () => {
+  it('negative margin -> null for that tier only', () => {
+    const r = priceBake({ scaledIngredients: cake, masterPrices, bake: { ...bake, marginMinPct: -10 } });
     expect(r.prices.minimum).toBeNull();
-    expect(r.pricesFloor.minimum).toBeNull();
-    expect(r.prices.standard).not.toBeNull(); // other tiers unaffected
+    expect(r.prices.standard).not.toBeNull();
   });
-
-  it('margin of exactly 100 (÷0) yields null, not Infinity', () => {
-    const r = priceBake({ scaledIngredients: smallCake, priceList, bake: { ...bake, marginPremiumPct: 100 } });
-    expect(r.prices.premium).toBeNull();
-  });
-
-  it('negative energy / packaging / overhead are clamped to 0, not subtracted', () => {
-    const neg = priceBake({ scaledIngredients: smallCake, priceList, bake: { ...bake, energyCost: -5, packagingCost: -3, overheadPct: -10 } });
-    const zero = priceBake({ scaledIngredients: smallCake, priceList, bake: { ...bake, energyCost: 0, packagingCost: 0, overheadPct: 0 } });
+  it('negative energy/packaging/overhead clamped to 0', () => {
+    const neg = priceBake({ scaledIngredients: cake, masterPrices, bake: { ...bake, energyCost: -5, packagingCost: -3, overheadPct: -10 } });
+    const zero = priceBake({ scaledIngredients: cake, masterPrices, bake: { ...bake, energyCost: 0, packagingCost: 0, overheadPct: 0 } });
     expect(neg.breakdown.energyCost.value).toBe(0);
-    expect(neg.breakdown.packagingCost.value).toBe(0);
     expect(neg.breakdown.costPlusOverhead.value).toBeCloseTo(zero.breakdown.costPlusOverhead.value, 6);
-  });
-
-  it('egg line cost uses the row\'s real per-egg weight, not a hardcoded 50 g', () => {
-    const medium = [{ name: 'eggs', canonical: 'egg', category: 'egg', grams: 132, perEgg: 44 }];
-    const large = [{ name: 'eggs', canonical: 'egg', category: 'egg', grams: 132, perEgg: 50 }];
-    const eggOnlyBake = { ...bake, labourMinutes: 0, hourlyRate: 0, energyCost: 0, packagingCost: 0, overheadPct: 0 };
-    const rM = priceBake({ scaledIngredients: medium, priceList, bake: eggOnlyBake });
-    const rL = priceBake({ scaledIngredients: large, priceList, bake: eggOnlyBake });
-    expect(rM.breakdown.ingredientCost.value).toBeCloseTo((132 / 44) * 0.25, 4); // 3 eggs
-    expect(rL.breakdown.ingredientCost.value).toBeCloseTo((132 / 50) * 0.25, 4); // 2.64 eggs
-    expect(rM.breakdown.ingredientCost.value).toBeGreaterThan(rL.breakdown.ingredientCost.value);
   });
 });

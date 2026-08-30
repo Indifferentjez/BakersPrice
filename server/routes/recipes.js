@@ -14,15 +14,17 @@ const getStmt = db.prepare('SELECT * FROM recipes WHERE id = ?');
 const calibStmt = db.prepare('SELECT * FROM calibrations WHERE recipe_id = ? ORDER BY created_at DESC');
 const insertStmt = db.prepare(`
   INSERT INTO recipes (name, raw_input, raw_kind, parsed_json, master_grams_json, detected_type,
-                       type_override, ratios_json, classification_json, allergens, notes, created_at, updated_at)
+                       type_override, ratios_json, classification_json, allergens, notes,
+                       ingredient_overrides_json, created_at, updated_at)
   VALUES (@name, @raw_input, @raw_kind, @parsed_json, @master_grams_json, @detected_type,
-          @type_override, @ratios_json, @classification_json, @allergens, @notes, datetime('now'), datetime('now'))
+          @type_override, @ratios_json, @classification_json, @allergens, @notes,
+          @ingredient_overrides_json, datetime('now'), datetime('now'))
 `);
 const updateStmt = db.prepare(`
   UPDATE recipes SET name=@name, raw_input=@raw_input, raw_kind=@raw_kind, parsed_json=@parsed_json,
     master_grams_json=@master_grams_json, detected_type=@detected_type, type_override=@type_override,
     ratios_json=@ratios_json, classification_json=@classification_json, allergens=@allergens,
-    notes=@notes, updated_at=datetime('now')
+    notes=@notes, ingredient_overrides_json=@ingredient_overrides_json, updated_at=datetime('now')
   WHERE id=@id
 `);
 const delStmt = db.prepare('DELETE FROM recipes WHERE id = ?');
@@ -35,6 +37,7 @@ function hydrate(row) {
     master: safeParse(row.master_grams_json, []),
     classification: safeParse(row.classification_json, null),
     ratios: safeParse(row.ratios_json, null),
+    ingredientOverrides: safeParse(row.ingredient_overrides_json, {}),
     calibrations: calibStmt.all(row.id).map((c) => ({ ...c, pans: safeParse(c.pans_json, []) })),
     effectiveType: row.type_override || row.detected_type,
   };
@@ -57,6 +60,9 @@ function bodyToRow(body) {
     classification_json: JSON.stringify(resolved.classification),
     allergens: body.allergens ? String(body.allergens) : null,
     notes: body.notes ? String(body.notes) : null,
+    ingredient_overrides_json: JSON.stringify(
+      body.ingredientOverrides ?? body.ingredient_overrides ?? safeParse(body.ingredient_overrides_json, {}),
+    ),
   };
 }
 

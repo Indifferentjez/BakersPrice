@@ -10,7 +10,7 @@
 //   liquid : base %   (milk/water/buttermilk/cream/yogurt/juice + fruit purees)
 //   cocoa : base %
 
-import { categoryOf, resolve } from './conversions.js';
+import { categoryOf, resolve } from './masterIngredients.js';
 
 // key -> display label. Also the override dropdown list.
 export const CAKE_TYPES = [

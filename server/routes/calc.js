@@ -4,6 +4,7 @@ import { resolveRecipe } from '../lib/recipe.js';
 import { classify, CAKE_TYPES } from '../lib/classify.js';
 import { calculate } from '../lib/calcEngine.js';
 import { priceBake } from '../lib/cost.js';
+import { pricesByKey } from '../lib/masterIngredients.js';
 import { auditCalculation } from '../lib/audit.js';
 
 const router = Router();
@@ -11,7 +12,6 @@ const router = Router();
 const getRecipe = db.prepare('SELECT * FROM recipes WHERE id = ?');
 const getDefaultCalib = db.prepare('SELECT k_per_ml FROM calibrations WHERE recipe_id = ? AND is_recipe_default = 1 LIMIT 1');
 const getDefaults = db.prepare('SELECT * FROM cost_defaults WHERE id = 1');
-const listPrices = db.prepare('SELECT * FROM ingredient_prices');
 const saveCalc = db.prepare(`
   INSERT INTO calculations (recipe_id, inputs_json, result_json, price_json, audit_json, created_at)
   VALUES (@recipe_id, @inputs_json, @result_json, @price_json, @audit_json, datetime('now'))
@@ -98,12 +98,19 @@ router.post('/', (req, res) => {
     currency: b.currency || d.currency || 'GBP',
   };
 
+  // per-recipe ingredient price overrides (from the saved recipe or this request)
+  let overrides = {};
+  try {
+    overrides = {
+      ...(recipeRow ? JSON.parse(recipeRow.ingredient_overrides_json || '{}') : {}),
+      ...(body.ingredientOverrides || {}),
+    };
+  } catch { overrides = body.ingredientOverrides || {}; }
+
   const price = priceBake({
-    scaledIngredients: calc.scaledIngredients.map((r) => ({ ...r, perEgg: r.perEgg || 50 })),
-    priceList: listPrices.all().map((p) => ({
-      name: p.name, canonical: p.canonical,
-      pricePerG: p.price_per_g, pricePerEgg: p.price_per_egg,
-    })),
+    scaledIngredients: calc.scaledIngredients,
+    masterPrices: pricesByKey(),
+    overrides,
     bake,
   });
 

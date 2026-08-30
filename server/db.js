@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS recipes (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Legacy per-baker price list. Superseded by master_ingredients; kept for the
+-- one-time migration in server/lib/masterIngredients.js, no longer written to.
 CREATE TABLE IF NOT EXISTS ingredient_prices (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   name          TEXT NOT NULL,
@@ -43,6 +45,31 @@ CREATE TABLE IF NOT EXISTS ingredient_prices (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ingredient_prices_name ON ingredient_prices(lower(name));
+
+-- Central ingredient catalogue: measurement/conversion data + a default price.
+-- Seeded from server/data/master-ingredients.json on first run.
+CREATE TABLE IF NOT EXISTS master_ingredients (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  key                 TEXT NOT NULL UNIQUE,
+  display_name        TEXT NOT NULL,
+  aliases_json        TEXT NOT NULL DEFAULT '[]',
+  measurement_type    TEXT NOT NULL,          -- 'weight' | 'volume' | 'count'
+  category            TEXT NOT NULL DEFAULT 'other',
+  density_g_per_cup   REAL,                   -- volume conversion (240 ml cup)
+  g_per_tsp_min       REAL,
+  g_per_tsp_max       REAL,
+  grams_per_unit_min  REAL,                   -- count: weight range per whole item
+  grams_per_unit_max  REAL,
+  count_noun          TEXT,                   -- 'egg', 'banana', ...
+  sizes_json          TEXT,                   -- optional {label:[min,max]} for eggs
+  price               REAL,
+  price_unit          TEXT NOT NULL DEFAULT 'kg',   -- 'kg'|'litre'|'each'|'g'|'ml'
+  price_basis         TEXT NOT NULL DEFAULT 'Aldi',
+  price_updated_at    TEXT,
+  source              TEXT NOT NULL DEFAULT 'manual', -- 'brief'|'seed'|'manual'
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 CREATE TABLE IF NOT EXISTS cost_defaults (
   id                 INTEGER PRIMARY KEY CHECK (id = 1),
@@ -112,5 +139,7 @@ ensureColumn('cost_defaults', 'labour_minutes', 'labour_minutes REAL');
 ensureColumn('quotes', 'is_estimate', 'is_estimate INTEGER NOT NULL DEFAULT 0');
 ensureColumn('quotes', 'price_floor', 'price_floor REAL');
 ensureColumn('quotes', 'estimate_json', 'estimate_json TEXT');
+// per-recipe ingredient price overrides: { [masterKey|nameSlug]: { price, priceUnit, note } }
+ensureColumn('recipes', 'ingredient_overrides_json', 'ingredient_overrides_json TEXT');
 
 export default db;
