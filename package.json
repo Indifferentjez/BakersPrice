@@ -1,0 +1,22 @@
+{
+  "name": "bakers-price",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Recipe -> Price app for a home baker: parse any recipe, scale to any pan, cost it, and generate a customer quote.",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm --workspace server run dev",
+    "dev:client": "npm --workspace client run dev",
+    "build": "npm --workspace client run build",
+    "start": "npm --workspace server run start",
+    "test": "npm --workspace server run test",
+    "seed": "npm --workspace server run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
