@@ -7,20 +7,24 @@ import {
 describe('master catalogue — seed + resolve', () => {
   it('seeds from the JSON on first use', () => {
     const c = getCatalogue();
-    expect(c.length).toBeGreaterThan(30);
+    expect(c.length).toBeGreaterThan(80);
     expect(byKey('flour')).toBeTruthy();
     expect(byKey('egg').measurementType).toBe('count');
     expect(byKey('flour').measurementType).toBe('volume');
     expect(byKey('egg').priceBasis).toBe('Aldi');
-    expect(byKey('flour').price).toBeNull(); // no fabricated prices
+    expect(byKey('flour').price).toBe(0.85);       // Aldi list
+    expect(byKey('cake-flour').price).toBeNull();  // not on the Aldi list
   });
 
   it('token-subset name matching', () => {
     expect(resolve('plain flour').key).toBe('flour');
-    expect(resolve('strong white bread flour').key).toBe('flour');
+    expect(resolve('strong white bread flour').key).toBe('strong-white-flour');
+    expect(resolve('self raising flour').key).toBe('self-raising-flour');
     expect(resolve('caster sugar').key).toBe('caster-sugar');
+    expect(resolve('granulated white sugar').key).toBe('granulated-sugar');
     expect(resolve('unsalted butter').key).toBe('butter');
     expect(resolve('sunflower oil').key).toBe('oil');
+    expect(resolve('ground cinnamon').key).toBe('cinnamon');
     expect(categoryOf('double cream')).toBe('liquid');
   });
 

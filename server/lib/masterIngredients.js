@@ -128,16 +128,51 @@ let booted = false;
 export function bootstrap() {
   if (booted) return;
   booted = true;
-  const n = db.prepare('SELECT COUNT(*) AS n FROM master_ingredients').get().n;
-  if (n === 0) {
-    const rows = loadSeedFile();
-    const stmt = insertStmt();
-    const tx = db.transaction((list) => { for (const r of list) stmt.run(seedRow(r)); });
-    tx(rows);
-    console.log(`master_ingredients seeded: ${rows.length} ingredients (prices pending, basis Aldi).`);
-  }
+  syncSeed();
   migrateLegacyPrices();
   invalidate();
+}
+
+// Keep the catalogue in step with server/data/master-ingredients.json on every
+// boot: insert new keys, refresh measurement/conversion data for existing keys,
+// and adopt the seed price ONLY where the baker hasn't set one of their own
+// (current price NULL, or last set by a seed — basis 'Aldi'/'migrated'/'seed').
+function syncSeed() {
+  const rows = loadSeedFile();
+  if (!rows.length) return;
+  const existing = new Map(
+    db.prepare('SELECT key, price, price_unit, price_basis FROM master_ingredients').all().map((r) => [r.key, r]),
+  );
+  const ins = insertStmt();
+  const updStruct = db.prepare(`
+    UPDATE master_ingredients SET display_name=@display_name, aliases_json=@aliases_json,
+      measurement_type=@measurement_type, category=@category, density_g_per_cup=@density_g_per_cup,
+      g_per_tsp_min=@g_per_tsp_min, g_per_tsp_max=@g_per_tsp_max,
+      grams_per_unit_min=@grams_per_unit_min, grams_per_unit_max=@grams_per_unit_max,
+      count_noun=@count_noun, sizes_json=@sizes_json, updated_at=datetime('now')
+    WHERE key=@key`);
+  const updPrice = db.prepare(`
+    UPDATE master_ingredients SET price=@price, price_unit=@price_unit, price_basis='Aldi',
+      price_updated_at=datetime('now'), updated_at=datetime('now') WHERE key=@key`);
+
+  let inserted = 0;
+  let repriced = 0;
+  const bakerSet = new Set(['manual', 'override-push', 'migrated']);
+  const tx = db.transaction(() => {
+    for (const raw of rows) {
+      const row = seedRow(raw);
+      const cur = existing.get(row.key);
+      if (!cur) { ins.run(row); inserted += 1; continue; }
+      updStruct.run(row);
+      const keepBakerPrice = cur.price != null && bakerSet.has(cur.price_basis);
+      const priceChanged = row.price != null && (cur.price !== row.price || cur.price_unit !== row.price_unit);
+      if (!keepBakerPrice && priceChanged) { updPrice.run(row); repriced += 1; }
+    }
+  });
+  tx();
+  if (inserted || repriced) {
+    console.log(`master_ingredients sync: +${inserted} new, ${repriced} price(s) set from seed (basis Aldi).`);
+  }
 }
 
 // One-time: fold the old per-baker ingredient_prices list into master prices,
