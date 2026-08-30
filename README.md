@@ -24,9 +24,29 @@ To enable photo / PDF / paste auto-parsing, copy `.env.example` to `.env` and se
 unaffected.
 
 ```bash
-npm test         # engine unit + regression suite (58 tests)
-npm run build && npm start   # production: server serves the built client
+npm test         # engine unit + regression suite
+npm run build && npm start   # production: server serves the built client on $PORT (default 3001)
 ```
+
+## Deploy (Render)
+
+`render.yaml` is a Render Blueprint. In the Render dashboard: **New + → Blueprint →**
+pick this repo → **Apply**. First deploy takes ~3–5 min and gives you a
+`*.onrender.com` URL.
+
+- **Free tier, so:** the service sleeps after ~15 min idle and its disk is wiped
+  on every sleep/redeploy — the SQLite DB does **not** persist (start command
+  re-seeds the sample recipe so it's never empty). For real persistence, switch
+  `plan: free` → `plan: starter` in `render.yaml` and uncomment the `disk:` +
+  `DB_PATH` blocks.
+- **No auth** — the deploy is fully open. Only `ANTHROPIC_API_KEY` is a real
+  liability: leave it unset (manual entry still works) or set a spend cap in the
+  Anthropic console first.
+- Runtime config: `PORT` (Render sets it), `DB_PATH`, `ANTHROPIC_API_KEY`,
+  `ANTHROPIC_MODEL` (blueprint defaults to `claude-sonnet-5`).
+
+Any Node host with a persistent disk works the same way — build `npm install
+--include=dev && npm run build`, start `npm start`, point `DB_PATH` at the disk.
 
 ## How it works
 
