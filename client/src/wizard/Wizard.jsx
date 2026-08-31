@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
+import { api, isUnauthenticated } from '../api.js';
+import { AuthCta, loginPath, useAuth } from '../auth.jsx';
 import { Badge, Range, Money, RatioBars, Checks, Err, EstimateBanner } from '../components.jsx';
 
 const STEPS = [
@@ -17,9 +18,23 @@ const emptyBake = {
   overheadPct: '', marginMinPct: '', marginStdPct: '', marginPremiumPct: '',
 };
 
+const DRAFT_KEY = 'bp_wizard_draft';
+const RETRY_SAVE_KEY = 'bp_retry_save';
+
+function loadDraft() {
+  try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); }
+  catch { return null; }
+}
+function clearDraft() {
+  sessionStorage.removeItem(DRAFT_KEY);
+  sessionStorage.removeItem(RETRY_SAVE_KEY);
+}
+
 export default function Wizard() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { user } = useAuth();
+  const restored = useRef(false);
 
   const [step, setStep] = useState('upload');
   const [error, setError] = useState(null);
@@ -49,6 +64,20 @@ export default function Wizard() {
   const [menuItems, setMenuItems] = useState([]);
   const [quote, setQuote] = useState(null);
   const [llm, setLlm] = useState(true);
+
+  const persistDraft = () => {
+    if (id) return;
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({
+      step, name, allergens, notes, rawKind, rawInput, rows, typeOverride,
+      ingredientOverrides, pan, bake, fillOverride, useCalibration, resolved,
+    }));
+  };
+
+  const goLoginToSave = () => {
+    persistDraft();
+    sessionStorage.setItem(RETRY_SAVE_KEY, '1');
+    nav(loginPath('/new'));
+  };
 
   // ---- load meta + defaults + existing recipe ----
   useEffect(() => {
@@ -86,8 +115,49 @@ export default function Wizard() {
       setCalibrations(r.calibrations || []);
       return api.post('/api/parse/resolve', { ingredients: (r.parsed && r.parsed.length ? r.parsed : r.master) });
     }).then((res) => { setResolved(res); setStep('confirm'); })
-      .catch(setError).finally(() => setBusy(false));
+      .catch((err) => {
+        if (isUnauthenticated(err)) nav(loginPath(`/recipe/${id}`));
+        else setError(err);
+      }).finally(() => setBusy(false));
   }, [id]);
+
+  useEffect(() => {
+    if (id || restored.current) return;
+    const draft = loadDraft();
+    if (!draft) return;
+    restored.current = true;
+    setStep(draft.step && draft.step !== 'result' && draft.step !== 'quote' ? draft.step : (draft.resolved ? 'pan' : 'confirm'));
+    setName(draft.name || '');
+    setAllergens(draft.allergens || '');
+    setNotes(draft.notes || '');
+    setRawKind(draft.rawKind || 'manual');
+    setRawInput(draft.rawInput || '');
+    setRows(Array.isArray(draft.rows) ? draft.rows : []);
+    setTypeOverride(draft.typeOverride || '');
+    setIngredientOverrides(draft.ingredientOverrides || {});
+    if (draft.pan) setPan(draft.pan);
+    if (draft.bake) setBake(draft.bake);
+    if (draft.fillOverride != null) setFillOverride(draft.fillOverride);
+    if (draft.useCalibration != null) setUseCalibration(draft.useCalibration);
+    if (draft.resolved) setResolved(draft.resolved);
+  }, [id]);
+
+  useEffect(() => {
+    if (id) return;
+    if (step === 'upload' && !rows.length) return;
+    persistDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, name, allergens, notes, rawKind, rawInput, rows, typeOverride, ingredientOverrides, pan, bake, fillOverride, useCalibration, resolved]);
+
+  useEffect(() => {
+    if (id || !user || !restored.current) return;
+    if (sessionStorage.getItem(RETRY_SAVE_KEY) !== '1') return;
+    sessionStorage.removeItem(RETRY_SAVE_KEY);
+    const t = setTimeout(() => { saveRecipe().catch(() => {}); }, 0);
+    return () => clearTimeout(t);
+    // saveRecipe is defined below; retry once after draft restore + login
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, id]);
 
   const stepIndex = STEPS.findIndex((s) => s[0] === step);
   const go = (s) => { setError(null); setStep(s); };
@@ -150,9 +220,19 @@ export default function Wizard() {
       setRecipeId(r.id);
       setResolved({ master: r.master, classification: r.classification, unresolved: [], totalMasterGrams: r.master.reduce((a, x) => a + (x.grams || 0), 0) });
       setCalibrations(r.calibrations || []);
-      if (!recipeId) window.history.replaceState(null, '', `/recipe/${r.id}`);
+      if (!recipeId) {
+        window.history.replaceState(null, '', `/recipe/${r.id}`);
+        clearDraft();
+      }
       return r;
-    } catch (err) { setError(err); throw err; } finally { setBusy(false); }
+    } catch (err) {
+      if (isUnauthenticated(err)) {
+        goLoginToSave();
+        return null;
+      }
+      setError(err);
+      throw err;
+    } finally { setBusy(false); }
   };
 
   // ================= CLASSIFY =================
@@ -164,25 +244,35 @@ export default function Wizard() {
   };
 
   // ================= PAN / CALC =================
-  const calcBody = (rid, ovr) => ({
-    recipeId: rid,
-    pan: cleanPan(pan),
-    cakeTypeKey: typeOverride || undefined,
-    useCalibration,
-    fillPctOverride: fillOverride ? Number(fillOverride) : null,
-    bake: numBake(bake),
-    ingredientOverrides: ovr ?? ingredientOverrides,
-  });
+  const calcBody = (rid, ovr) => {
+    const body = {
+      pan: cleanPan(pan),
+      cakeTypeKey: typeOverride || resolved?.classification?.detected || undefined,
+      useCalibration,
+      fillPctOverride: fillOverride ? Number(fillOverride) : null,
+      bake: numBake(bake),
+      ingredientOverrides: ovr ?? ingredientOverrides,
+    };
+    if (rid) body.recipeId = rid;
+    else if (resolved?.master?.length) body.master = resolved.master;
+    return body;
+  };
 
   const runCalc = async () => {
     setBusy(true); setError(null);
     try {
       let rid = recipeId;
-      if (!rid) { const r = await saveRecipe(); rid = r.id; }
+      if (!rid && user) {
+        const r = await saveRecipe();
+        rid = r?.id || null;
+      }
       const d = await api.post('/api/calc', calcBody(rid));
       setCalc(d);
       go('result');
-    } catch (err) { setError(err); } finally { setBusy(false); }
+    } catch (err) {
+      if (isUnauthenticated(err)) goLoginToSave();
+      else setError(err);
+    } finally { setBusy(false); }
   };
 
   // re-price with a changed set of per-recipe ingredient overrides (from the pricing panel)
@@ -224,7 +314,8 @@ export default function Wizard() {
       {step === 'confirm' && (
         <ConfirmStep {...{
           rows, setRows, resolved, recheck, name, setName, allergens, setAllergens,
-          notes, setNotes, saveRecipe, recipeId, busy, onNext: () => go('classify'),
+          notes, setNotes, saveRecipe, recipeId, busy, user, goLoginToSave,
+          onNext: () => go('classify'),
         }} />
       )}
 
@@ -253,6 +344,7 @@ export default function Wizard() {
       {step === 'quote' && calc && (
         <QuoteStep {...{
           calc, name, allergens, defaults, menuItems, setMenuItems, quote, setQuote,
+          user, goLoginToSave,
           onDone: () => nav('/quotes'),
         }} />
       )}
@@ -342,7 +434,7 @@ function MeasuredCell({ info }) {
   return <><span className="muted">{info.quantity} {info.unit} → </span><strong>{gramsApprox(info.grams)}</strong></>;
 }
 
-function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergens, setAllergens, notes, setNotes, saveRecipe, recipeId, busy, onNext }) {
+function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergens, setAllergens, notes, setNotes, saveRecipe, recipeId, busy, onNext, user, goLoginToSave }) {
   const set = (i, k, v) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
   const add = () => setRows([...rows, blankRow()]);
   const del = (i) => setRows(rows.filter((_, j) => j !== i));
@@ -408,9 +500,21 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
         </div>
       </div>
 
-      <div className="panel" style={{ display: 'flex', gap: 10 }}>
-        <button onClick={saveRecipe} disabled={busy} className="ghost">{recipeId ? 'Update recipe' : 'Save recipe'}</button>
-        <button onClick={async () => { await saveRecipe(); onNext(); }} disabled={busy || unresolvedCount > 0}>Save &amp; continue →</button>
+      {!user && (
+        <AuthCta>Sign in to save this recipe to your account.</AuthCta>
+      )}
+      <div className="panel" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        {user ? (
+          <>
+            <button onClick={saveRecipe} disabled={busy} className="ghost">{recipeId ? 'Update recipe' : 'Save recipe'}</button>
+            <button onClick={async () => { const r = await saveRecipe(); if (r) onNext(); }} disabled={busy || unresolvedCount > 0}>Save &amp; continue →</button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="ghost" onClick={goLoginToSave}>Sign in to save</button>
+            <button type="button" onClick={onNext} disabled={busy || unresolvedCount > 0}>Continue without saving →</button>
+          </>
+        )}
         {unresolvedCount > 0 && <span className="muted" style={{ alignSelf: 'center' }}>Enter a weight for every flagged row first.</span>}
       </div>
     </>
@@ -822,7 +926,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
   );
 }
 
-function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, quote, setQuote, onDone }) {
+function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, quote, setQuote, onDone, user, goLoginToSave }) {
   const price = calc.price;
   const [mode, setMode] = useState(menuItems.length > 0 ? 'menu' : 'single');
   const [tier, setTier] = useState('standard');
@@ -838,6 +942,10 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
   const sf = (k, v) => setForm({ ...form, [k]: v });
 
   const submit = async () => {
+    if (!user || !calc.calculationId) {
+      goLoginToSave();
+      return;
+    }
     setBusy(true); setErr(null);
     try {
       let body;
@@ -879,6 +987,9 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
     <div className="panel stack">
       <h2>Build the customer quote</h2>
       <Err error={err} />
+      {(!user || !calc.calculationId) && (
+        <AuthCta>Sign in to save this quote to your account. After you log in, save the recipe and re-run the calculation so the quote can be stored.</AuthCta>
+      )}
       <div className="tierbtns">
         <button className={`tier ${mode === 'single' ? 'sel' : ''}`} onClick={() => setMode('single')}>Single quote (one size &amp; price)</button>
         <button className={`tier ${mode === 'menu' ? 'sel' : ''}`} onClick={() => setMode('menu')}>Price-list menu (2–3 sizes){menuItems.length ? ` · ${menuItems.length} added` : ''}</button>
@@ -936,7 +1047,9 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
       </div>
 
       <div>
-        <button onClick={submit} disabled={busy || (mode === 'menu' && menuItems.length === 0)}>Generate {mode === 'menu' ? 'price list' : 'quote'}</button>
+        <button onClick={submit} disabled={busy || !user || !calc.calculationId || (mode === 'menu' && menuItems.length === 0)}>
+          {user ? `Generate ${mode === 'menu' ? 'price list' : 'quote'}` : 'Sign in to save a quote'}
+        </button>
       </div>
     </div>
   );

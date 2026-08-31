@@ -1,5 +1,5 @@
 async function j(method, url, body) {
-  const opts = { method, headers: {} };
+  const opts = { method, headers: {}, credentials: 'include' };
   if (body !== undefined) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
@@ -16,6 +16,10 @@ async function j(method, url, body) {
   return data;
 }
 
+export function isUnauthenticated(err) {
+  return err?.status === 401 || err?.data?.code === 'UNAUTHENTICATED';
+}
+
 export const api = {
   get: (u) => j('GET', u),
   post: (u, b) => j('POST', u, b),
@@ -25,7 +29,7 @@ export const api = {
   async parseFile(file) {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch('/api/parse', { method: 'POST', body: fd });
+    const res = await fetch('/api/parse', { method: 'POST', body: fd, credentials: 'include' });
     const data = await res.json();
     if (!res.ok) {
       const err = new Error(data.error || 'Parse failed');

@@ -6,15 +6,15 @@ import { calculate, hasCalibration, PAN_SHAPES, PAN_UNITS, CalcError } from '../
 import { priceBake } from '../lib/cost.js';
 import { pricesByKey } from '../lib/masterIngredients.js';
 import { auditCalculation } from '../lib/audit.js';
+import { readUserDefaults, defaultsTemplate } from '../lib/auth.js';
 
 const router = Router();
 
-const getRecipe = db.prepare('SELECT * FROM recipes WHERE id = ?');
+const getRecipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?');
 const getDefaultCalib = db.prepare('SELECT k_per_ml FROM calibrations WHERE recipe_id = ? AND is_recipe_default = 1 LIMIT 1');
-const getDefaults = db.prepare('SELECT * FROM cost_defaults WHERE id = 1');
 const saveCalc = db.prepare(`
-  INSERT INTO calculations (recipe_id, inputs_json, result_json, price_json, audit_json, created_at)
-  VALUES (@recipe_id, @inputs_json, @result_json, @price_json, @audit_json, datetime('now'))
+  INSERT INTO calculations (user_id, recipe_id, inputs_json, result_json, price_json, audit_json, created_at)
+  VALUES (@user_id, @recipe_id, @inputs_json, @result_json, @price_json, @audit_json, datetime('now'))
 `);
 
 const n = (v) => (v === '' || v == null ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
@@ -45,7 +45,8 @@ router.post('/', (req, res) => {
   let recipeRow = null;
 
   if (body.recipeId) {
-    recipeRow = getRecipe.get(body.recipeId);
+    if (!req.user) return res.status(401).json({ error: 'Sign in required', code: 'UNAUTHENTICATED' });
+    recipeRow = getRecipe.get(body.recipeId, req.user.id);
     if (!recipeRow) return res.status(404).json({ error: 'Recipe not found' });
     master = JSON.parse(recipeRow.master_grams_json || '[]');
     classification = JSON.parse(recipeRow.classification_json || 'null') || classify(master);
@@ -107,7 +108,7 @@ router.post('/', (req, res) => {
   }
 
   // ---- costing ----
-  const d = getDefaults.get();
+  const d = req.user ? readUserDefaults(req.user.id) : defaultsTemplate();
   const b = body.bake || {};
   const bake = {
     labourMinutes: n(b.labourMinutes ?? d.labour_minutes),
@@ -140,16 +141,21 @@ router.post('/', (req, res) => {
   const audit = auditCalculation(calc, price);
 
   const inputs = { pan, cakeTypeKey, calibrationKPerMl, fillPctOverride: body.fillPctOverride ?? null, bake };
-  const info = saveCalc.run({
-    recipe_id: body.recipeId || null,
-    inputs_json: JSON.stringify(inputs),
-    result_json: JSON.stringify(calc),
-    price_json: JSON.stringify(price),
-    audit_json: JSON.stringify(audit),
-  });
+  let calculationId = null;
+  if (req.user) {
+    const info = saveCalc.run({
+      user_id: req.user.id,
+      recipe_id: body.recipeId || null,
+      inputs_json: JSON.stringify(inputs),
+      result_json: JSON.stringify(calc),
+      price_json: JSON.stringify(price),
+      audit_json: JSON.stringify(audit),
+    });
+    calculationId = info.lastInsertRowid;
+  }
 
   res.json({
-    calculationId: info.lastInsertRowid,
+    calculationId,
     recipe: recipeRow ? { id: recipeRow.id, name: recipeRow.name } : null,
     cakeTypeKey,
     classification,

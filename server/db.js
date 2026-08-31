@@ -109,6 +109,37 @@ CREATE TABLE IF NOT EXISTS calculations (
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS users (
+  id             TEXT PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,
+  name           TEXT,
+  password_hash  TEXT,
+  google_sub     TEXT UNIQUE,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at  TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_cost_defaults (
+  user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  hourly_rate        REAL,
+  energy_cost        REAL NOT NULL DEFAULT 0,
+  packaging_cost     REAL NOT NULL DEFAULT 0,
+  overhead_pct       REAL NOT NULL DEFAULT 0,
+  margin_min_pct     REAL NOT NULL DEFAULT 28,
+  margin_std_pct     REAL NOT NULL DEFAULT 50,
+  margin_premium_pct REAL NOT NULL DEFAULT 65,
+  labour_minutes     REAL,
+  currency           TEXT NOT NULL DEFAULT 'GBP',
+  business_name      TEXT,
+  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS quotes (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   calculation_id INTEGER REFERENCES calculations(id) ON DELETE SET NULL,
@@ -141,5 +172,12 @@ ensureColumn('quotes', 'price_floor', 'price_floor REAL');
 ensureColumn('quotes', 'estimate_json', 'estimate_json TEXT');
 // per-recipe ingredient price overrides: { [masterKey|nameSlug]: { price, priceUnit, note } }
 ensureColumn('recipes', 'ingredient_overrides_json', 'ingredient_overrides_json TEXT');
+ensureColumn('recipes', 'user_id', 'user_id TEXT REFERENCES users(id)');
+ensureColumn('quotes', 'user_id', 'user_id TEXT REFERENCES users(id)');
+ensureColumn('calculations', 'user_id', 'user_id TEXT REFERENCES users(id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_recipes_user_id ON recipes(user_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_quotes_user_id ON quotes(user_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_calculations_user_id ON calculations(user_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)');
 
 export default db;

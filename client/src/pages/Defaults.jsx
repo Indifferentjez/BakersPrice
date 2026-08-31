@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
+import { AuthCta, useAuth } from '../auth.jsx';
 import { Err } from '../components.jsx';
 
 const FIELDS = [
@@ -18,6 +19,7 @@ export default function Defaults() {
   const [d, setD] = useState(null);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => { api.get('/api/defaults').then(setD).catch(setError); }, []);
 
@@ -32,7 +34,8 @@ export default function Defaults() {
 
   return (
     <form className="panel" onSubmit={save}>
-      <h2>Cost defaults <span className="sub">global — every bake starts from these, override per bake</span></h2>
+      <h2>Cost defaults <span className="sub">{user ? 'yours — every bake starts from these, override per bake' : 'starting values — sign in to save your own'}</span></h2>
+      {!user && <AuthCta>Sign in to save cost defaults to your account.</AuthCta>}
       <Err error={error} />
       {d.needsHourlyRate && (
         <div className="warnbox" style={{ marginBottom: 14 }}>
@@ -54,7 +57,7 @@ export default function Defaults() {
         ))}
       </div>
       <div style={{ marginTop: 16 }}>
-        <button type="submit">Save defaults</button>
+        <button type="submit" disabled={!user}>{user ? 'Save defaults' : 'Sign in to save'}</button>
         {saved && <span className="pill" style={{ marginLeft: 10 }}>Saved</span>}
       </div>
     </form>

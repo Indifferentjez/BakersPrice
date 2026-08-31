@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import { AuthCta, useAuth } from '../auth.jsx';
 import { Err } from '../components.jsx';
 
 const blankNew = { display_name: '', measurement_type: 'weight', category: 'other', aliases: '', density_g_per_cup: '', grams_per_unit_min: '', grams_per_unit_max: '', count_noun: '', price: '', price_unit: 'kg' };
@@ -14,6 +15,7 @@ export default function MasterIngredients() {
   const [form, setForm] = useState(blankNew);
   const [importText, setImportText] = useState('');
   const [importMsg, setImportMsg] = useState(null);
+  const { user } = useAuth();
 
   const load = () => api.get('/api/master-ingredients')
     .then((d) => { setItems(d.items); setUnits(d.priceUnits || units); setPriceDraft({}); })
@@ -77,9 +79,12 @@ export default function MasterIngredients() {
       <div className="panel">
         <h2>Ingredient catalogue <span className="sub">measurement + conversion data and a default price · {priced}/{items.length} priced · basis: Aldi</span></h2>
         <Err error={error} />
+        {!user && (
+          <AuthCta>The catalogue is shared. Sign in to edit prices so guests cannot overwrite them.</AuthCta>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input placeholder="filter…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 220 }} />
-          <button className="ghost sm" onClick={() => setAdding((a) => !a)}>{adding ? 'Cancel' : '+ New ingredient'}</button>
+          <button className="ghost sm" disabled={!user} onClick={() => setAdding((a) => !a)}>{adding ? 'Cancel' : '+ New ingredient'}</button>
           <span className="muted" style={{ marginLeft: 'auto', fontSize: '.85rem' }}>
             Prices default to Aldi. Recipes use these automatically; a per-recipe override never changes them unless you push it here.
           </span>
@@ -126,11 +131,11 @@ export default function MasterIngredients() {
                       value={d.priceUnit} onChange={(e) => setPriceDraft({ ...priceDraft, [it.key]: { ...d, priceUnit: e.target.value } })}>
                       {units.map((u) => <option key={u}>{u}</option>)}
                     </select>
-                    {dirty && <button className="sm" style={{ marginLeft: 4 }} onClick={() => savePrice(it)}>Save</button>}
+                    {dirty && user && <button className="sm" style={{ marginLeft: 4 }} onClick={() => savePrice(it)}>Save</button>}
                   </td>
                   <td className="muted">{it.priceBasis}</td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="subtle sm" onClick={async () => { await api.del(`/api/master-ingredients/${it.key}`); load(); }}>Delete</button>
+                    {user && <button className="subtle sm" onClick={async () => { await api.del(`/api/master-ingredients/${it.key}`); load(); }}>Delete</button>}
                   </td>
                 </tr>
               );
@@ -143,7 +148,7 @@ export default function MasterIngredients() {
         <h3>Bulk price import <span className="sub">paste your Aldi list — one per line: <code>name, unit, price</code> (or <code>name, price</code>)</span></h3>
         <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={'plain flour, kg, 1.09\ncaster sugar, kg, 0.89\nlarge eggs, each, 0.22\nbutter, kg, 1.79'} style={{ minHeight: 120 }} />
         <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button onClick={runImport} disabled={!importText.trim()}>Import prices</button>
+          <button onClick={runImport} disabled={!user || !importText.trim()}>Import prices</button>
           {importMsg && <span className="muted">{importMsg}</span>}
         </div>
       </div>

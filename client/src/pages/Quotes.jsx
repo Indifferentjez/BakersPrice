@@ -1,18 +1,32 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api.js';
+import { api, isUnauthenticated } from '../api.js';
+import { AuthCta, useAuth } from '../auth.jsx';
 import { Money, Err } from '../components.jsx';
 
 export default function Quotes() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
-  const load = () => api.get('/api/quotes').then(setRows).catch(setError);
-  useEffect(() => { load(); }, []);
+  const { user, loading } = useAuth();
+
+  const load = () => api.get('/api/quotes').then(setRows).catch((err) => {
+    if (isUnauthenticated(err)) { setRows([]); setError(null); return; }
+    setError(err);
+  });
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { setRows([]); setError(null); return; }
+    load();
+  }, [user, loading]);
 
   return (
     <div className="panel">
       <h2>Saved quotes</h2>
+      {!loading && !user && (
+        <AuthCta>Sign in to see quotes saved to your account.</AuthCta>
+      )}
       <Err error={error} />
-      {rows.length === 0 && <p className="muted">No quotes yet — build one at the end of a recipe.</p>}
+      {rows.length === 0 && <p className="muted">{user ? 'No quotes yet — build one at the end of a recipe.' : 'No quotes to show until you log in.'}</p>}
       {rows.length > 0 && (
         <table>
           <thead><tr><th>Cake</th><th>Mode</th><th>Tier</th><th>Price</th><th>Created</th><th /></tr></thead>
