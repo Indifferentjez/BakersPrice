@@ -1,14 +1,27 @@
 import { Router } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import {
   llmAvailable, LlmUnavailableError,
   parseRecipeText, parseRecipeImage, parseRecipePdf,
 } from '../anthropic.js';
 import { resolveRecipe } from '../lib/recipe.js';
+import { requireUser } from '../lib/auth.js';
 
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
 const router = Router();
 const MAX_TEXT_CHARS = 100_000;
+
+// LLM calls cost money — signed-in only, and capped per user/IP.
+const parseLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.VITEST === 'true',
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: 'Parsing rate limit reached. Try again later.' },
+});
 
 // Sniff the file from its bytes, not the client-supplied MIME. Anthropic
 // accepts JPEG/PNG/GIF/WebP images and PDF documents.
@@ -31,7 +44,7 @@ router.get('/status', (_req, res) => {
 
 // POST /api/parse            body: { text }
 // POST /api/parse  multipart: file=<image|pdf>
-router.post('/', upload.single('file'), async (req, res, next) => {
+router.post('/', requireUser, parseLimiter, upload.single('file'), async (req, res, next) => {
   try {
     let parsed;
     let kind;

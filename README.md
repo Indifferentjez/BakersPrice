@@ -5,26 +5,40 @@ ratios → scale to any pan → cost it (ingredients + labour + energy + packagi
 overhead + margin) → generate a clean customer quote that **never** shows cost or
 margin.
 
-Single baker, single user, local-first. React + Vite client, Express + SQLite
-server. Recipe photo/PDF/paste parsing uses the Claude API; everything else works
-without a key.
+Single baker, **sign-in required to save**. React + Vite client, Express + SQLite
+server with session cookies. You can walk through the wizard and preview a
+calculation without an account. Signing in (email/password or optional Google)
+is required to: save recipes / quotes / calibrations / cost defaults, edit
+ingredient prices, and use LLM recipe parsing (photo / PDF / paste — it spends
+API credits, so it's gated and rate-limited). Manual ingredient entry needs no
+key. Customer quote pages `/q/:id` stay public.
 
 ## Run it
 
 ```bash
 npm install
-npm run seed     # optional: adds one sample recipe
+npm run seed     # optional: adds one sample recipe (claimed by the first signup)
 npm run dev      # server on :3001, client on :5173
 ```
 
-Open http://localhost:5173.
+Open http://localhost:5173. Create an account (or log in) to persist baker data.
+Customer quote pages at `/q/:id` stay public.
 
 To enable photo / PDF / paste auto-parsing, copy `.env.example` to `.env` and set
 `ANTHROPIC_API_KEY`. Without it, use **Enter manually** — the rest of the app is
 unaffected.
 
+Auth env (also in `.env.example`):
+
+- `SESSION_SECRET` — required in production (signed session cookie).
+- `GOOGLE_CLIENT_ID` — optional; omit to hide the Google button. In Google Cloud
+  Console create an OAuth **Web application** client and add JavaScript origins
+  `http://localhost:5173` plus your production origin. Client ID only.
+- `CLIENT_ORIGIN` — default `http://localhost:5173` (Vite). Same-origin production
+  deploys do not need a separate API origin.
+
 ```bash
-npm test         # engine unit + regression suite
+npm test         # engine unit + regression suite (includes auth ownership)
 npm run build && npm start   # production: server serves the built client on $PORT (default 3001)
 ```
 
@@ -36,13 +50,17 @@ pick this repo → **Apply**. First deploy takes ~3–5 min and gives you a
 
 - **Free tier, so:** the service sleeps after ~15 min idle and its disk is wiped
   on every sleep/redeploy — the SQLite DB does **not** persist (start command
-  re-seeds the sample recipe so it's never empty). For real persistence, switch
-  `plan: free` → `plan: starter` in `render.yaml` and uncomment the `disk:` +
-  `DB_PATH` blocks.
-- **No auth** — the deploy is fully open. Only `ANTHROPIC_API_KEY` is a real
-  liability: leave it unset (manual entry still works) or set a spend cap in the
-  Anthropic console first.
-- Runtime config: `PORT` (Render sets it), `DB_PATH`, `ANTHROPIC_API_KEY`,
+  re-seeds the sample recipe so the first signup can claim it). For real
+  persistence, switch `plan: free` → `plan: starter` in `render.yaml` and
+  uncomment the `disk:` + `DB_PATH` blocks.
+- **Auth:** email/password (and optional Google) session cookies. Set
+  `SESSION_SECRET` (the blueprint generates one). Set `GOOGLE_CLIENT_ID` if you
+  want the Google button; add your `*.onrender.com` origin in Google Cloud
+  Console. Customer quote pages `/q/:id` stay public. `ANTHROPIC_API_KEY` still
+  spends your credits for anyone who is signed in — leave it unset or set a
+  spend cap.
+- Runtime config: `PORT` (Render sets it), `DB_PATH`, `SESSION_SECRET`,
+  `GOOGLE_CLIENT_ID`, `CLIENT_ORIGIN`, `ANTHROPIC_API_KEY`,
   `ANTHROPIC_MODEL` (blueprint defaults to `claude-sonnet-5`).
 
 Any Node host with a persistent disk works the same way — build `npm install
@@ -65,7 +83,9 @@ Any Node host with a persistent disk works the same way — build `npm install
 
 ## Data
 
-SQLite at `server/data/app.db` (created on first run). Tables: `master_ingredients`
-(the catalogue), `recipes` (incl. per-recipe `ingredient_overrides_json`),
-`cost_defaults` (singleton), `calibrations`, `calculations`, `quotes`, and the
-legacy `ingredient_prices` (migrated, then unused). Delete the file to reset.
+SQLite at `server/data/app.db` (created on first run). Tables: `users`,
+`sessions`, `user_cost_defaults`, `master_ingredients` (the catalogue),
+`recipes` (incl. per-recipe `ingredient_overrides_json` and `user_id`),
+`cost_defaults` (template for new accounts), `calibrations`, `calculations`,
+`quotes`, and the legacy `ingredient_prices` (migrated, then unused). Delete the
+file to reset.

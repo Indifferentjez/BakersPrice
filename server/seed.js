@@ -28,11 +28,19 @@ const SAMPLE = {
   notes: 'Sample recipe. Bananas and eggs stay as counts; cups convert with each ingredient\'s own density.',
 };
 
-const count = db.prepare('SELECT COUNT(*) AS n FROM recipes').get().n;
-if (count > 0) {
-  console.log(`Recipes already present (${count}) — nothing seeded.`);
+const recipeCount = db.prepare('SELECT COUNT(*) AS n FROM recipes').get().n;
+const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+if (recipeCount > 0) {
+  console.log(`Recipes already present (${recipeCount}) — nothing seeded.`);
   process.exit(0);
 }
+if (userCount > 0) {
+  console.log('Users already exist — not seeding an unowned sample recipe.');
+  process.exit(0);
+}
+
+// Inserted with user_id NULL. The first account to sign up claims orphan rows;
+// later signups do not. Master ingredients stay global.
 
 const r = resolveRecipe(SAMPLE.ingredients);
 db.prepare(`

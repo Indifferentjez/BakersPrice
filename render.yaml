@@ -8,15 +8,17 @@
 # ⚠ FREE-TIER CONFIG. Two consequences:
 #   1. The service sleeps after ~15 min idle (first request after that is slow).
 #   2. The filesystem is wiped on every sleep and every redeploy, so the SQLite
-#      database does NOT persist — recipes / prices / quotes you enter are lost
-#      when it sleeps. `npm run seed` on start re-adds the sample recipe so the
-#      app is never empty. Fine for testing; not for real use.
+#      database does NOT persist — recipes / prices / quotes / accounts you enter
+#      are lost when it sleeps. `npm run seed` on start re-adds the sample recipe
+#      (unowned) so the first signup can claim it. Fine for testing; not for real use.
 #
 # To PERSIST data: change `plan: free` -> `plan: starter` (~$7/mo), then
 # uncomment the `disk:` block and the DB_PATH env var at the bottom.
 #
-# ⚠ NO AUTH. This deploy is fully open — anyone with the URL can read and edit
-# everything and (if ANTHROPIC_API_KEY is set) spend your Anthropic credits.
+# Auth: session cookies. SESSION_SECRET is generated below. Optional Google
+# sign-in needs GOOGLE_CLIENT_ID (OAuth Web client; JS origin = this service URL).
+# Customer quote pages /q/:id stay public. Ingredient catalogue GET is public;
+# price edits require a signed-in user.
 
 services:
   - type: web
@@ -33,12 +35,28 @@ services:
       - key: NODE_VERSION
         value: 22.15.1
 
+      # Enables Secure session cookies and the "SESSION_SECRET required" guard.
+      - key: NODE_ENV
+        value: production
+
       # Recipe photo / PDF / paste auto-parsing via the Claude API.
-      # LEAVE UNSET to keep it off — the app is public and unauthenticated, so a
-      # set key means anyone can run up your Anthropic bill. If you do set it,
-      # add a spend cap in the Anthropic console first. Manual recipe entry
-      # works regardless.
+      # LEAVE UNSET to keep it off — a set key means signed-in users can run up
+      # your Anthropic bill. If you do set it, add a spend cap in the Anthropic
+      # console first. Manual recipe entry works regardless.
       - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # Required for signed session cookies in production.
+      - key: SESSION_SECRET
+        generateValue: true
+
+      # Optional Google Identity Services client ID (Web application).
+      # Add this service's https origin as an Authorized JavaScript origin.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      # Only needed if the API is on a different origin than the browser app.
+      - key: CLIENT_ORIGIN
         sync: false
 
       # Sonnet is ~3x faster and much cheaper than the claude-opus-5 default —

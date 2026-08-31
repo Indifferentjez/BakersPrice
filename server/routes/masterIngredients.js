@@ -3,6 +3,7 @@ import {
   getCatalogue, byKey, upsertIngredient, removeIngredient, updatePrice, importPrices,
   PRICE_UNITS, resolve,
 } from '../lib/masterIngredients.js';
+import { requireUser } from '../lib/auth.js';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/resolve', (req, res) => {
   res.json({ match: hit || null });
 });
 
-router.post('/', (req, res) => {
+router.post('/', requireUser, (req, res) => {
   try {
     const row = upsertIngredient(req.body || {});
     res.status(201).json(row);
@@ -25,7 +26,7 @@ router.post('/', (req, res) => {
   }
 });
 
-router.put('/:key', (req, res) => {
+router.put('/:key', requireUser, (req, res) => {
   if (!byKey(req.params.key)) return res.status(404).json({ error: 'Not found' });
   const b = req.body || {};
   try {
@@ -41,13 +42,13 @@ router.put('/:key', (req, res) => {
   }
 });
 
-router.delete('/:key', (req, res) => {
+router.delete('/:key', requireUser, (req, res) => {
   removeIngredient(req.params.key);
   res.status(204).end();
 });
 
 // Bulk price import. body: { rows: [{ name, price, priceUnit }] }  or  { text: "name\tunit\tprice\n..." }
-router.post('/import', (req, res) => {
+router.post('/import', requireUser, (req, res) => {
   let rows = Array.isArray(req.body?.rows) ? req.body.rows : null;
   if (!rows && typeof req.body?.text === 'string') {
     rows = req.body.text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((line) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api.js';
+import { api, isUnauthenticated } from '../api.js';
+import { AuthCta, useAuth } from '../auth.jsx';
 import { Err } from '../components.jsx';
 
 export default function RecipeList() {
@@ -8,12 +9,22 @@ export default function RecipeList() {
   const [llm, setLlm] = useState(true);
   const [error, setError] = useState(null);
   const nav = useNavigate();
+  const { user, loading } = useAuth();
 
-  const load = () => api.get('/api/recipes').then(setRecipes).catch(setError);
+  const load = () => api.get('/api/recipes').then(setRecipes).catch((err) => {
+    if (isUnauthenticated(err)) { setRecipes([]); setError(null); return; }
+    setError(err);
+  });
+
   useEffect(() => {
-    load();
     api.get('/api/parse/status').then((s) => setLlm(s.available)).catch(() => setLlm(false));
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) { setRecipes([]); setError(null); return; }
+    load();
+  }, [user, loading]);
 
   const remove = async (id) => {
     if (!confirm('Delete this recipe and its calibrations?')) return;
@@ -31,12 +42,15 @@ export default function RecipeList() {
             You can still enter recipes by hand — everything else works.
           </div>
         )}
+        {!loading && !user && (
+          <AuthCta>Sign in to see recipes saved to your account. You can still start a new recipe without an account.</AuthCta>
+        )}
         <Err error={error} />
         <button onClick={() => nav('/new')}>+ New recipe</button>
       </div>
 
       <div className="panel">
-        {recipes.length === 0 && <p className="muted">No recipes yet.</p>}
+        {recipes.length === 0 && <p className="muted">{user ? 'No recipes yet.' : 'No recipes to show until you log in.'}</p>}
         {recipes.length > 0 && (
           <table>
             <thead>

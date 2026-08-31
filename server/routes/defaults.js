@@ -1,27 +1,23 @@
 import { Router } from 'express';
-import { db } from '../db.js';
+import { readUserDefaults, writeUserDefaults, defaultsTemplate, requireUser } from '../lib/auth.js';
 
 const router = Router();
 
-const get = db.prepare('SELECT * FROM cost_defaults WHERE id = 1');
-const upd = db.prepare(`
-  UPDATE cost_defaults SET
-    hourly_rate=@hourly_rate, energy_cost=@energy_cost, packaging_cost=@packaging_cost,
-    overhead_pct=@overhead_pct, margin_min_pct=@margin_min_pct, margin_std_pct=@margin_std_pct,
-    margin_premium_pct=@margin_premium_pct, labour_minutes=@labour_minutes,
-    currency=@currency, business_name=@business_name, updated_at=datetime('now')
-  WHERE id = 1
-`);
-
 const numOrNull = (v) => (v === '' || v == null ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
 
-router.get('/', (_req, res) => {
-  const d = get.get();
-  res.json({ ...d, needsHourlyRate: d.hourly_rate == null });
+function asDto(d) {
+  return { ...d, needsHourlyRate: d.hourly_rate == null };
+}
+
+router.get('/', (req, res) => {
+  if (!req.user) {
+    return res.json(asDto(defaultsTemplate()));
+  }
+  res.json(readUserDefaults(req.user.id));
 });
 
-router.put('/', (req, res) => {
-  const cur = get.get();
+router.put('/', requireUser, (req, res) => {
+  const cur = readUserDefaults(req.user.id);
   const b = req.body || {};
   const merged = {
     hourly_rate: numOrNull(b.hourly_rate ?? cur.hourly_rate),
@@ -35,9 +31,7 @@ router.put('/', (req, res) => {
     currency: String(b.currency ?? cur.currency ?? 'GBP'),
     business_name: (b.business_name ?? cur.business_name) ? String(b.business_name ?? cur.business_name) : null,
   };
-  upd.run(merged);
-  const d = get.get();
-  res.json({ ...d, needsHourlyRate: d.hourly_rate == null });
+  res.json(writeUserDefaults(req.user.id, merged));
 });
 
 export default router;

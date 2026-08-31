@@ -2,29 +2,27 @@ import { Router } from 'express';
 import { db } from '../db.js';
 import { sizeLabel, weightLabel } from '../lib/labels.js';
 import { renderQuotePdf } from '../lib/quotePdf.js';
+import { requireUser, readUserDefaults } from '../lib/auth.js';
 
 const router = Router();
 
-const getCalc = db.prepare('SELECT * FROM calculations WHERE id = ?');
-const getDefaults = db.prepare('SELECT * FROM cost_defaults WHERE id = 1');
+const getCalc = db.prepare('SELECT * FROM calculations WHERE id = ? AND user_id = ?');
+const getQuote = db.prepare('SELECT * FROM quotes WHERE id = ?');
+const getOwnedQuote = db.prepare('SELECT * FROM quotes WHERE id = ? AND user_id = ?');
+const listQuotes = db.prepare('SELECT id, mode, cake_name, business_name, created_at, tier, price, price_floor, is_estimate FROM quotes WHERE user_id = ? ORDER BY created_at DESC');
+const del = db.prepare('DELETE FROM quotes WHERE id = ? AND user_id = ?');
 const insert = db.prepare(`
-  INSERT INTO quotes (calculation_id, recipe_id, mode, business_name, cake_name, description,
+  INSERT INTO quotes (user_id, calculation_id, recipe_id, mode, business_name, cake_name, description,
                       size_label, weight_label, allergens, note, tier, price, price_floor,
                       is_estimate, estimate_json, menu_json, currency, created_at)
-  VALUES (@calculation_id, @recipe_id, @mode, @business_name, @cake_name, @description,
+  VALUES (@user_id, @calculation_id, @recipe_id, @mode, @business_name, @cake_name, @description,
           @size_label, @weight_label, @allergens, @note, @tier, @price, @price_floor,
           @is_estimate, @estimate_json, @menu_json, @currency, datetime('now'))
 `);
-const getQuote = db.prepare('SELECT * FROM quotes WHERE id = ?');
-const listQuotes = db.prepare('SELECT id, mode, cake_name, business_name, created_at, tier, price, price_floor, is_estimate FROM quotes ORDER BY created_at DESC');
-const del = db.prepare('DELETE FROM quotes WHERE id = ?');
 
 const CUSTOMER_ESTIMATE_NOTE = 'This is an estimated price. The final price is confirmed when you place your order.';
 export const QUOTE_TIERS = ['minimum', 'standard', 'premium'];
 
-// Build the CUSTOMER-SAFE DTO. This is the only shape sent to the customer
-// endpoints. It never contains cost, margin, overhead, scaled ingredients, or
-// the estimate's error breakdown — only a plain "this is an estimate" note.
 export function customerDto(q) {
   const base = {
     mode: q.mode,
@@ -45,24 +43,28 @@ export function customerDto(q) {
       })),
     };
   }
-  // note: internal tier name and the cost/error breakdown are NOT exposed here
   return { ...base, sizeLabel: q.size_label || null, weightLabel: q.weight_label || null, price: q.price };
 }
 function safeParse(s, f) { try { return s ? JSON.parse(s) : f; } catch { return f; } }
 
-router.get('/', (_req, res) => res.json(listQuotes.all()));
+function hydrate(q) {
+  return {
+    id: q.id,
+    createdAt: q.created_at,
+    isEstimate: !!q.is_estimate,
+    shareUrl: `/q/${q.id}`,
+    pdfUrl: `/api/quotes/${q.id}/pdf`,
+    ...customerDto(q),
+  };
+}
 
-// Create a quote. Incomplete price lists are ALLOWED — the quote is flagged as an
-// estimate and carries the margin for error (baker view only).
-//
-// SINGLE mode body: { calculationId, tier, cakeName, description, businessName?,
-//                     allergens?, note?, sizeLabel?, weightLabel? }
-// MENU mode body:   { mode:'menu', businessName?, cakeName, description?, allergens?,
-//                     note?, currency?, items:[{ calculationId, tier, sizeLabel? }] }
-router.post('/', (req, res) => {
+router.get('/', requireUser, (req, res) => res.json(listQuotes.all(req.user.id)));
+
+router.post('/', requireUser, (req, res) => {
   const b = req.body || {};
-  const d = getDefaults.get();
+  const d = readUserDefaults(req.user.id);
   const businessName = b.businessName ?? d.business_name ?? null;
+  const uid = req.user.id;
 
   if (b.mode === 'menu') {
     const items = Array.isArray(b.items) ? b.items : [];
@@ -72,7 +74,7 @@ router.post('/', (req, res) => {
     let anyEstimate = false;
     const perItemEstimate = [];
     for (const it of items) {
-      const c = getCalc.get(it.calculationId);
+      const c = getCalc.get(it.calculationId, uid);
       if (!c) return res.status(404).json({ error: `calculation ${it.calculationId} not found` });
       const calc = JSON.parse(c.result_json);
       const price = JSON.parse(c.price_json);
@@ -97,6 +99,7 @@ router.post('/', (req, res) => {
       });
     }
     const info = insert.run({
+      user_id: uid,
       calculation_id: items[0].calculationId, recipe_id: null, mode: 'menu',
       business_name: businessName, cake_name: b.cakeName || 'Cake menu', description: b.description || null,
       size_label: null, weight_label: null, allergens: b.allergens || null, note: b.note || null,
@@ -108,8 +111,7 @@ router.post('/', (req, res) => {
     return res.status(201).json(hydrate(getQuote.get(info.lastInsertRowid)));
   }
 
-  // single
-  const c = getCalc.get(b.calculationId);
+  const c = getCalc.get(b.calculationId, uid);
   if (!c) return res.status(404).json({ error: 'calculation not found' });
   const calc = JSON.parse(c.result_json);
   const price = JSON.parse(c.price_json);
@@ -124,6 +126,7 @@ router.post('/', (req, res) => {
 
   const isEstimate = !price.complete;
   const info = insert.run({
+    user_id: uid,
     calculation_id: b.calculationId, recipe_id: c.recipe_id, mode: 'single',
     business_name: businessName,
     cake_name: b.cakeName || 'Celebration cake',
@@ -143,29 +146,6 @@ router.post('/', (req, res) => {
   res.status(201).json(hydrate(getQuote.get(info.lastInsertRowid)));
 });
 
-// Response for POST / and GET /:id. Customer-SAFE by construction: it is exactly
-// the whitelisted customer DTO plus a couple of identifiers the create-flow UI
-// needs. No cost / margin / overhead / tier / floor / estimate-breakdown field is
-// ever emitted on a per-quote GET — the baker's error breakdown lives on the
-// calculation (`/api/calc`), not on the quote.
-function hydrate(q) {
-  return {
-    id: q.id,
-    createdAt: q.created_at,
-    isEstimate: !!q.is_estimate,
-    shareUrl: `/q/${q.id}`,
-    pdfUrl: `/api/quotes/${q.id}/pdf`,
-    ...customerDto(q),
-  };
-}
-
-router.get('/:id', (req, res) => {
-  const q = getQuote.get(req.params.id);
-  if (!q) return res.status(404).json({ error: 'Not found' });
-  res.json(hydrate(q));
-});
-
-// CUSTOMER-SAFE endpoint — used by the public share page. Whitelisted DTO only.
 router.get('/:id/customer', (req, res) => {
   const q = getQuote.get(req.params.id);
   if (!q) return res.status(404).json({ error: 'Not found' });
@@ -181,6 +161,16 @@ router.get('/:id/pdf', (req, res) => {
   renderQuotePdf(dto, res);
 });
 
-router.delete('/:id', (req, res) => { del.run(req.params.id); res.status(204).end(); });
+router.get('/:id', requireUser, (req, res) => {
+  const q = getOwnedQuote.get(req.params.id, req.user.id);
+  if (!q) return res.status(404).json({ error: 'Not found' });
+  res.json(hydrate(q));
+});
+
+router.delete('/:id', requireUser, (req, res) => {
+  const info = del.run(req.params.id, req.user.id);
+  if (!info.changes) return res.status(404).json({ error: 'Not found' });
+  res.status(204).end();
+});
 
 export default router;

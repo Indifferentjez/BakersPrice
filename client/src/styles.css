@@ -36,6 +36,19 @@ small { color: var(--soft); }
   color: var(--soft); font-size: .9rem;
 }
 .nav a.active { background: var(--accent-soft); color: var(--accent); }
+.nav-session {
+  display: flex; align-items: center; gap: 10px; margin-left: 8px;
+  font-size: .88rem; white-space: nowrap;
+}
+.nav-session a {
+  padding: 6px 12px; border-radius: 999px; text-decoration: none;
+  color: var(--soft); font-size: .9rem;
+}
+.nav-session a.active { background: var(--accent-soft); color: var(--accent); }
+.nav-session .muted { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+.auth-panel { max-width: 420px; }
+.google-btn { display: flex; justify-content: center; min-height: 40px; }
 
 .panel {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
