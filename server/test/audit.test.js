@@ -28,6 +28,23 @@ describe('self-audit', () => {
     expect(a.checks.some((x) => x.title === 'Scaling factor' && x.level === 'ok')).toBe(true);
   });
 
+  it('does not treat assumed generic density as a measured pass', () => {
+    const c = calculate({ master, base: 300, cakeTypeKey: 'butter-cake',
+      pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 } });
+    const a = auditCalculation(c);
+    expect(a.checks.some((x) => /assumed, not measured/i.test(x.title))).toBe(true);
+    expect(a.checks.some((x) => x.title === 'Batter density' && x.level === 'ok')).toBe(false);
+  });
+
+  it('flags an out-of-range assumed density on the generic path', () => {
+    const c = calculate({ master, base: 300, cakeTypeKey: 'butter-cake',
+      pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 },
+      batterDensityAssumed: 1.4 });
+    const a = auditCalculation(c);
+    expect(a.worst).toBe('fail');
+    expect(a.checks.some((x) => /out of range/i.test(x.title))).toBe(true);
+  });
+
   it('flags scaling beyond 4x as REQUIRES_TESTING', () => {
     const c = calculate({ master, base: 300, cakeTypeKey: 'butter-cake',
       pan: { shape: 'round', unit: 'in', diameter: 18, depth: 4 } });

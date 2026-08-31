@@ -410,7 +410,8 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
 
       <div className="panel" style={{ display: 'flex', gap: 10 }}>
         <button onClick={saveRecipe} disabled={busy} className="ghost">{recipeId ? 'Update recipe' : 'Save recipe'}</button>
-        <button onClick={async () => { await saveRecipe(); onNext(); }} disabled={busy}>Save &amp; continue →</button>
+        <button onClick={async () => { await saveRecipe(); onNext(); }} disabled={busy || unresolvedCount > 0}>Save &amp; continue →</button>
+        {unresolvedCount > 0 && <span className="muted" style={{ alignSelf: 'center' }}>Enter a weight for every flagged row first.</span>}
       </div>
     </>
   );
@@ -454,6 +455,11 @@ function PanStep({ meta, pan, setPan, useCalibration, setUseCalibration, calibra
     round: ['diameter', 'depth'], bundt: ['diameter', 'depth'],
     square: ['side', 'depth'], rectangular: ['length', 'width', 'depth'], loaf: ['length', 'width', 'depth'],
   }[pan.shape] || ['diameter', 'depth'];
+  const requiredDims = {
+    round: ['diameter'], bundt: ['diameter'], square: ['side'],
+    rectangular: ['length', 'width'], loaf: ['length'],
+  }[pan.shape] || ['diameter'];
+  const panReady = requiredDims.every((f) => Number(pan[f]) > 0);
   const defaultK = calibrations.find((c) => c.is_recipe_default)?.k_per_ml;
 
   return (
@@ -473,7 +479,7 @@ function PanStep({ meta, pan, setPan, useCalibration, setUseCalibration, calibra
           </div>
           {dimFields.map((f) => (
             <div key={f}><label>{f}{f === 'depth' ? ' (optional)' : ''}</label>
-              <input type="number" step="0.1" value={pan[f]} onChange={(e) => sp(f, e.target.value)} />
+              <input type="number" min="0.1" step="0.1" value={pan[f]} onChange={(e) => sp(f, e.target.value)} />
             </div>
           ))}
         </div>
@@ -529,7 +535,8 @@ function PanStep({ meta, pan, setPan, useCalibration, setUseCalibration, calibra
           ))}
         </div>
         <div style={{ marginTop: 16 }}>
-          <button onClick={runCalc} disabled={busy}>Calculate →</button>
+          <button onClick={runCalc} disabled={busy || !panReady}>Calculate →</button>
+          {!panReady && <p className="muted" style={{ marginTop: 8 }}>Enter the required pan dimensions first.</p>}
         </div>
       </div>
     </>

@@ -269,13 +269,15 @@ export { PRICE_UNITS };
 export function updatePrice(key, { price, priceUnit, priceBasis }) {
   const row = db.prepare('SELECT id FROM master_ingredients WHERE key = ?').get(key);
   if (!row) return null;
+  const p = numOrNull(price);
+  if (p != null && p < 0) throw new Error('Price cannot be negative.');
   db.prepare(
     `UPDATE master_ingredients SET price=@price, price_unit=@priceUnit,
      price_basis=@priceBasis, price_updated_at=datetime('now'), updated_at=datetime('now')
      WHERE key=@key`,
   ).run({
     key,
-    price: numOrNull(price),
+    price: p,
     priceUnit: PRICE_UNITS.includes(priceUnit) ? priceUnit : 'kg',
     priceBasis: priceBasis || 'manual',
   });
@@ -286,6 +288,9 @@ export function updatePrice(key, { price, priceUnit, priceBasis }) {
 export function upsertIngredient(body) {
   const key = String(body.key || slugify(body.display_name || body.displayName || body.name || '')).trim();
   if (!key) throw new Error('key or display_name required');
+  if (body.price != null && body.price !== '' && Number(body.price) < 0) {
+    throw new Error('Price cannot be negative.');
+  }
   const existing = db.prepare('SELECT id FROM master_ingredients WHERE key = ?').get(key);
   const r = seedRow({ ...body, key, source: body.source || 'manual', price: body.price ?? null });
   if (existing) {
@@ -325,10 +330,12 @@ export function importPrices(rows = []) {
   return out;
 }
 function updatePriceInternal(key, price, priceUnit, basis) {
+  const p = numOrNull(price);
+  if (p != null && p < 0) return;
   db.prepare(
     `UPDATE master_ingredients SET price=@price, price_unit=@priceUnit, price_basis=@basis,
      price_updated_at=datetime('now'), updated_at=datetime('now') WHERE key=@key`,
-  ).run({ key, price: numOrNull(price), priceUnit: PRICE_UNITS.includes(priceUnit) ? priceUnit : 'kg', basis });
+  ).run({ key, price: p, priceUnit: PRICE_UNITS.includes(priceUnit) ? priceUnit : 'kg', basis });
 }
 
 function slugify(s) {
