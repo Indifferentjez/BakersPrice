@@ -35,6 +35,10 @@ services:
       - key: NODE_VERSION
         value: 22.15.1
 
+      # Enables Secure session cookies and the "SESSION_SECRET required" guard.
+      - key: NODE_ENV
+        value: production
+
       # Recipe photo / PDF / paste auto-parsing via the Claude API.
       # LEAVE UNSET to keep it off — a set key means signed-in users can run up
       # your Anthropic bill. If you do set it, add a spend cap in the Anthropic

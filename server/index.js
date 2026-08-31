@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import './db.js';
 import { bootstrap as bootstrapIngredients } from './lib/masterIngredients.js';
-import { attachUser } from './lib/auth.js';
+import { attachUser, deleteExpiredSessions } from './lib/auth.js';
 import authRoutes from './routes/auth.js';
 import parseRoutes from './routes/parse.js';
 import recipeRoutes from './routes/recipes.js';
@@ -21,10 +21,21 @@ import { llmAvailable } from './anthropic.js';
 
 bootstrapIngredients(); // seed master_ingredients + migrate legacy prices on first run
 
+// Reap expired sessions on boot and daily (rows are otherwise only cleared lazily
+// when their own id is looked up again).
+deleteExpiredSessions();
+if (process.env.VITEST !== 'true') {
+  setInterval(deleteExpiredSessions, 24 * 60 * 60 * 1000).unref();
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const app = express();
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+
+// Render / most PaaS put one proxy in front — needed so req.ip is the real
+// client (rate limiting) and Secure-cookie detection works.
+app.set('trust proxy', 1);
 
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(cookieParser(process.env.SESSION_SECRET || undefined));

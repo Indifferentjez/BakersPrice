@@ -3,14 +3,13 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 vi.mock('google-auth-library', () => ({
   OAuth2Client: class {
     verifyIdToken({ idToken }) {
-      if (idToken !== 'good-token') throw new Error('invalid token');
-      return {
-        getPayload: () => ({
-          sub: 'google-sub-1',
-          email: 'google.user@example.com',
-          name: 'G User',
-        }),
+      const map = {
+        'good-token': { sub: 'google-sub-1', email: 'google.user@example.com', email_verified: true, name: 'G User' },
+        'collision-token': { sub: 'google-sub-collide', email: 'collide@example.com', email_verified: true, name: 'Collide' },
+        'unverified-token': { sub: 'google-sub-2', email: 'unverified@example.com', email_verified: false, name: 'NV' },
       };
+      if (!map[idToken]) throw new Error('invalid token');
+      return { getPayload: () => map[idToken] };
     }
   },
 }));
@@ -242,5 +241,38 @@ describe('auth + recipe ownership', () => {
     const again = agent();
     const linked = await again.post('/api/auth/google').send({ credential: 'good-token' });
     expect(linked.body.user.id).toBe(ok.body.user.id);
+  });
+
+  it('rejects a Google credential whose email is not verified', async () => {
+    const r = await agent().post('/api/auth/google').send({ credential: 'unverified-token' });
+    expect(r.status).toBe(401);
+  });
+
+  it('a logged-out Google sign-in cannot adopt an existing password account', async () => {
+    const email = 'collide@example.com';
+    const local = agent();
+    await signup(local, email); // account with a password, email never verified
+
+    const takeover = await agent().post('/api/auth/google').send({ credential: 'collision-token' });
+    expect(takeover.status).toBe(409);
+    expect(takeover.body.code).toBe('PASSWORD_ACCOUNT_EXISTS');
+
+    // the real owner: sign in with the password, then Google links to the same account
+    const owner = agent();
+    await owner.post('/api/auth/login').send({ email, password: PASS });
+    const link = await owner.post('/api/auth/google').send({ credential: 'collision-token' });
+    expect(link.status, link.body?.error).toBe(200);
+    expect(link.body.user.email).toBe(email);
+  });
+
+  it('guest cannot call the LLM parse endpoint', async () => {
+    const r = await request(app).post('/api/parse').send({ text: '200g plain flour' });
+    expect(r.status).toBe(401);
+  });
+
+  it('login takes a bcrypt path even for an unknown email (no fast 404)', async () => {
+    const r = await agent().post('/api/auth/login').send({ email: `ghost-${crypto.randomUUID()}@example.com`, password: 'whatever12' });
+    expect(r.status).toBe(401);
+    expect(r.body.error).toMatch(/invalid email or password/i);
   });
 });

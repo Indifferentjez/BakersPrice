@@ -6,10 +6,10 @@ export const COOKIE_NAME = 'bp_sid';
 const SESSION_DAYS = 30;
 const BCRYPT_ROUNDS = 10;
 export const MAX_PASSWORD_LEN = 200;
-// A fixed bcrypt hash of a random string. Compared against on the
-// user-not-found login branch so a missing email costs the same as a wrong
-// password (no timing oracle for account enumeration).
-export const DUMMY_HASH = '$2a$10$C6UzMDM.H6dfI/f/IKcEeO1sT.dVQ0h1r5o1t7Yb3sQ2Yy8y0m1S';
+// A real bcrypt hash of a random secret, generated once at boot. The login route
+// compares against it when the email is unknown, so a missing account costs the
+// same bcrypt work as a wrong password (no enumeration timing oracle).
+export const DUMMY_HASH = bcrypt.hashSync(crypto.randomBytes(24).toString('hex'), BCRYPT_ROUNDS);
 
 const insertUser = db.prepare(`
   INSERT INTO users (id, email, name, password_hash, google_sub, created_at)
@@ -130,8 +130,14 @@ export function findUserByGoogleSub(sub) {
   return getUserByGoogle.get(sub);
 }
 
+// Links a Google sub to a user only if that user has no sub yet. Returns the
+// updated user on success, or null if the row already had a (different) sub.
 export function linkGoogleSub(userId, sub) {
-  setGoogleSub.run({ id: userId, google_sub: sub });
+  const info = setGoogleSub.run({ id: userId, google_sub: sub });
+  if (!info.changes) {
+    const u = getUserById.get(userId);
+    return u && u.google_sub === sub ? u : null;
+  }
   return getUserById.get(userId);
 }
 
@@ -170,11 +176,15 @@ export function attachUser(req, _res, next) {
   if (!sid) return next();
   const row = getSession.get(sid);
   if (!row) return next();
-  if (new Date(String(row.expires_at).replace(' ', 'T') + (String(row.expires_at).endsWith('Z') ? '' : 'Z')).getTime() < Date.now()) {
+  const expiresMs = new Date(String(row.expires_at).replace(' ', 'T') + (String(row.expires_at).endsWith('Z') ? '' : 'Z')).getTime();
+  if (expiresMs < Date.now()) {
     deleteSession.run(sid);
     return next();
   }
-  touchSession.run({ id: sid, expires_at: sessionExpiryIso() });
+  // Sliding expiry, but refresh at most once/day to avoid a write per request.
+  if (expiresMs - Date.now() < (SESSION_DAYS - 1) * 24 * 60 * 60 * 1000) {
+    touchSession.run({ id: sid, expires_at: sessionExpiryIso() });
+  }
   req.user = publicUser(row);
   req.sessionId = row.session_id;
   next();

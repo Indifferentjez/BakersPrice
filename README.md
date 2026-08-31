@@ -6,10 +6,12 @@ overhead + margin) → generate a clean customer quote that **never** shows cost
 margin.
 
 Single baker, **sign-in required to save**. React + Vite client, Express + SQLite
-server with session cookies. Recipe photo/PDF/paste parsing uses the Claude API;
-everything else works without a key. You can walk through the wizard without an
-account; saving recipes, quotes, calibrations, cost defaults, and ingredient
-price edits requires log in (email/password or optional Google).
+server with session cookies. You can walk through the wizard and preview a
+calculation without an account. Signing in (email/password or optional Google)
+is required to: save recipes / quotes / calibrations / cost defaults, edit
+ingredient prices, and use LLM recipe parsing (photo / PDF / paste — it spends
+API credits, so it's gated and rate-limited). Manual ingredient entry needs no
+key. Customer quote pages `/q/:id` stay public.
 
 ## Run it
 
