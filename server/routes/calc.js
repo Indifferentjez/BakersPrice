@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { resolveRecipe } from '../lib/recipe.js';
-import { classify, CAKE_TYPES } from '../lib/classify.js';
-import { calculate } from '../lib/calcEngine.js';
+import { classify, CAKE_TYPES, knownCakeType } from '../lib/classify.js';
+import { calculate, hasCalibration, PAN_SHAPES, PAN_UNITS, CalcError } from '../lib/calcEngine.js';
 import { priceBake } from '../lib/cost.js';
 import { pricesByKey } from '../lib/masterIngredients.js';
 import { auditCalculation } from '../lib/audit.js';
@@ -22,8 +22,8 @@ const n = (v) => (v === '' || v == null ? null : (Number.isFinite(Number(v)) ? N
 router.get('/meta', (_req, res) => {
   res.json({
     cakeTypes: CAKE_TYPES,
-    panShapes: ['round', 'square', 'rectangular', 'loaf', 'bundt'],
-    units: ['in', 'cm'],
+    panShapes: PAN_SHAPES,
+    units: PAN_UNITS,
   });
 });
 
@@ -31,6 +31,12 @@ router.post('/', (req, res) => {
   const body = req.body || {};
   const pan = body.pan || {};
   if (!pan.shape) return res.status(400).json({ error: 'pan.shape is required' });
+  if (!PAN_SHAPES.includes(pan.shape)) {
+    return res.status(400).json({ error: `Unknown pan shape "${pan.shape}". Use ${PAN_SHAPES.join(', ')}.` });
+  }
+  if (pan.unit && !PAN_UNITS.includes(pan.unit)) {
+    return res.status(400).json({ error: `Pan unit must be "in" or "cm", not "${pan.unit}".` });
+  }
 
   // ---- master formula + classification ----
   let master;
@@ -53,14 +59,25 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Provide recipeId or a master ingredient list.' });
   }
 
-  const priced = master.filter((m) => m.grams != null);
-  if (!priced.length) return res.status(400).json({ error: 'No ingredient weights resolved — confirm the flagged rows first.' });
+  // grams == null is the live signal from measure.js; needsConfirm is kept for
+  // saved recipes and any future path that flags a row while still attaching grams.
+  const unresolved = master.filter((m) => m.grams == null || m.needsConfirm);
+  if (unresolved.length) {
+    return res.status(400).json({
+      error: `${unresolved.length} ingredient(s) still need a confirmed weight before scaling.`,
+      unresolved: unresolved.map((r) => ({ name: r.name, quantity: r.quantity, unit: r.unit, note: r.note })),
+    });
+  }
+
+  if (body.cakeTypeKey && !knownCakeType(body.cakeTypeKey)) {
+    return res.status(400).json({ error: `Unknown cake type "${body.cakeTypeKey}".` });
+  }
 
   const cakeTypeKey =
-    body.cakeTypeKey ||
-    recipeRow?.type_override ||
-    recipeRow?.detected_type ||
-    classification.detected ||
+    knownCakeType(body.cakeTypeKey) ||
+    knownCakeType(recipeRow?.type_override) ||
+    knownCakeType(recipeRow?.detected_type) ||
+    knownCakeType(classification.detected) ||
     'unclassified';
 
   // ---- density: explicit > recipe calibration default > generic fill table ----
@@ -69,19 +86,25 @@ router.post('/', (req, res) => {
     calibrationKPerMl = getDefaultCalib.get(body.recipeId)?.k_per_ml ?? null;
   }
 
-  const calc = calculate({
-    master: priced,
-    base: baseGrams,
-    cakeTypeKey,
-    pan: {
-      shape: pan.shape,
-      unit: pan.unit || 'in',
-      diameter: pan.diameter, side: pan.side, length: pan.length, width: pan.width, depth: pan.depth,
-      deep: !!pan.deep,
-    },
-    calibrationKPerMl,
-    fillPctOverride: body.fillPctOverride ?? null,
-  });
+  let calc;
+  try {
+    calc = calculate({
+      master,
+      base: baseGrams,
+      cakeTypeKey,
+      pan: {
+        shape: pan.shape,
+        unit: pan.unit || 'in',
+        diameter: pan.diameter, side: pan.side, length: pan.length, width: pan.width, depth: pan.depth,
+        deep: !!pan.deep,
+      },
+      calibrationKPerMl,
+      fillPctOverride: body.fillPctOverride ?? null,
+    });
+  } catch (err) {
+    if (err instanceof CalcError) return res.status(400).json({ error: err.message });
+    throw err;
+  }
 
   // ---- costing ----
   const d = getDefaults.get();
@@ -130,7 +153,7 @@ router.post('/', (req, res) => {
     recipe: recipeRow ? { id: recipeRow.id, name: recipeRow.name } : null,
     cakeTypeKey,
     classification,
-    densitySource: calibrationKPerMl ? 'calibration' : 'generic-fill-table',
+    densitySource: hasCalibration(calibrationKPerMl) ? 'calibration' : 'generic-fill-table',
     calc,
     price,
     audit,

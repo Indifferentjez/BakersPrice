@@ -20,11 +20,12 @@ const listQuotes = db.prepare('SELECT id, mode, cake_name, business_name, create
 const del = db.prepare('DELETE FROM quotes WHERE id = ?');
 
 const CUSTOMER_ESTIMATE_NOTE = 'This is an estimated price. The final price is confirmed when you place your order.';
+export const QUOTE_TIERS = ['minimum', 'standard', 'premium'];
 
 // Build the CUSTOMER-SAFE DTO. This is the only shape sent to the customer
 // endpoints. It never contains cost, margin, overhead, scaled ingredients, or
 // the estimate's error breakdown — only a plain "this is an estimate" note.
-function customerDto(q) {
+export function customerDto(q) {
   const base = {
     mode: q.mode,
     businessName: q.business_name || null,
@@ -76,6 +77,9 @@ router.post('/', (req, res) => {
       const calc = JSON.parse(c.result_json);
       const price = JSON.parse(c.price_json);
       const tier = it.tier || 'standard';
+      if (!QUOTE_TIERS.includes(tier)) {
+        return res.status(400).json({ error: `tier must be one of: ${QUOTE_TIERS.join(', ')}.` });
+      }
       if (price.prices[tier] == null) {
         return res.status(400).json({ error: `Calculation ${it.calculationId} has no ${tier} price — set the three margin percentages first.` });
       }
@@ -111,6 +115,9 @@ router.post('/', (req, res) => {
   const price = JSON.parse(c.price_json);
   const inputs = JSON.parse(c.inputs_json);
   const tier = b.tier || 'standard';
+  if (!QUOTE_TIERS.includes(tier)) {
+    return res.status(400).json({ error: `tier must be one of: ${QUOTE_TIERS.join(', ')}.` });
+  }
   if (price.prices[tier] == null) {
     return res.status(400).json({ error: `No ${tier} price on this calculation — set the three margin percentages first.` });
   }

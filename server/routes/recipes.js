@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { resolveRecipe } from '../lib/recipe.js';
+import { knownCakeType } from '../lib/classify.js';
 
 const router = Router();
 
@@ -44,6 +45,17 @@ function hydrate(row) {
 }
 function safeParse(s, fallback) { try { return s ? JSON.parse(s) : fallback; } catch { return fallback; } }
 
+function parseTypeOverride(v) {
+  if (v == null || v === '') return null;
+  const key = knownCakeType(v);
+  if (!key) {
+    const err = new Error(`Unknown cake type "${v}".`);
+    err.status = 400;
+    throw err;
+  }
+  return key;
+}
+
 function bodyToRow(body) {
   const parsed = body.parsed || body.ingredients || [];
   const overrides = body.overrides || {};
@@ -55,7 +67,7 @@ function bodyToRow(body) {
     parsed_json: JSON.stringify(parsed),
     master_grams_json: JSON.stringify(resolved.master),
     detected_type: resolved.classification.detected,
-    type_override: body.type_override ?? body.typeOverride ?? null,
+    type_override: parseTypeOverride(body.type_override ?? body.typeOverride ?? null),
     ratios_json: JSON.stringify(resolved.classification.ratios),
     classification_json: JSON.stringify(resolved.classification),
     allergens: body.allergens ? String(body.allergens) : null,
@@ -74,26 +86,36 @@ router.get('/:id', (req, res) => {
   res.json(row);
 });
 
-router.post('/', (req, res) => {
-  const row = bodyToRow(req.body);
-  const info = insertStmt.run(row);
-  res.status(201).json(hydrate(getStmt.get(info.lastInsertRowid)));
+router.post('/', (req, res, next) => {
+  try {
+    const row = bodyToRow(req.body);
+    const info = insertStmt.run(row);
+    res.status(201).json(hydrate(getStmt.get(info.lastInsertRowid)));
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(err);
+  }
 });
 
-router.put('/:id', (req, res) => {
-  const existing = getStmt.get(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Not found' });
-  // allow partial: type override only
-  if (req.body.onlyTypeOverride) {
-    updateStmt.run({
-      ...existing,
-      type_override: req.body.type_override ?? null,
-    });
-    return res.json(hydrate(getStmt.get(req.params.id)));
+router.put('/:id', (req, res, next) => {
+  try {
+    const existing = getStmt.get(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Not found' });
+    // allow partial: type override only
+    if (req.body.onlyTypeOverride) {
+      updateStmt.run({
+        ...existing,
+        type_override: parseTypeOverride(req.body.type_override ?? null),
+      });
+      return res.json(hydrate(getStmt.get(req.params.id)));
+    }
+    const row = bodyToRow({ ...existing, ...req.body });
+    updateStmt.run({ ...row, id: Number(req.params.id) });
+    res.json(hydrate(getStmt.get(req.params.id)));
+  } catch (err) {
+    if (err.status === 400) return res.status(400).json({ error: err.message });
+    next(err);
   }
-  const row = bodyToRow({ ...existing, ...req.body });
-  updateStmt.run({ ...row, id: Number(req.params.id) });
-  res.json(hydrate(getStmt.get(req.params.id)));
 });
 
 router.delete('/:id', (req, res) => {

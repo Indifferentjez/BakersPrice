@@ -57,7 +57,10 @@ export default function MasterIngredients() {
     setError(null); setImportMsg(null);
     try {
       const r = await api.post('/api/master-ingredients/import', { text: importText });
-      setImportMsg(`Updated ${r.updated.length}${r.unmatched.length ? ` · unmatched: ${r.unmatched.join(', ')}` : ''}`);
+      const bits = [`Updated ${r.updated.length}`];
+      if (r.skipped?.length) bits.push(`skipped ${r.skipped.length} negative`);
+      if (r.unmatched.length) bits.push(`unmatched: ${r.unmatched.join(', ')}`);
+      setImportMsg(bits.join(' · '));
       setImportText(''); load();
     } catch (e) { setError(e); }
   };

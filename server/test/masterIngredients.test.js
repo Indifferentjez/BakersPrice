@@ -63,6 +63,18 @@ describe('master catalogue — writes', () => {
     expect(byKey('egg').price).toBe(0.22);
   });
 
+  it('does not report a negative price as updated', () => {
+    const before = byKey('flour').price;
+    const r = importPrices([
+      { name: 'plain flour', price: -1, priceUnit: 'kg' },
+      { name: 'caster sugar', price: 0, priceUnit: 'kg' },
+    ]);
+    expect(r.updated.map((u) => u.key)).toEqual(['caster-sugar']);
+    expect(r.skipped).toEqual([expect.objectContaining({ key: 'flour', reason: 'negative price' })]);
+    expect(byKey('flour').price).toBe(before);
+    expect(byKey('caster-sugar').price).toBe(0);
+  });
+
   it('upsertIngredient adds a new catalogue entry that resolve() then finds', () => {
     upsertIngredient({
       display_name: 'Marzipan', measurement_type: 'weight', category: 'mixin',

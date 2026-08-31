@@ -8,6 +8,20 @@
 import { ACC, weakest } from './accuracy.js';
 
 const IN_TO_CM = 2.54;
+export const PAN_SHAPES = ['round', 'square', 'rectangular', 'loaf', 'bundt'];
+export const PAN_UNITS = ['in', 'cm'];
+
+export class CalcError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'CalcError';
+    this.status = 400;
+  }
+}
+
+export function hasCalibration(k) {
+  return k != null && k !== '' && Number.isFinite(Number(k)) && Number(k) > 0;
+}
 
 // cake-type key -> generic fill % window and baked-weight retention % window.
 const FILL_PCT = {
@@ -39,18 +53,43 @@ export function retentionWindow(cakeTypeKey) {
 // ---- pan geometry -------------------------------------------------------------
 // pan = { shape:'round'|'square'|'rectangular'|'loaf'|'bundt', unit:'in'|'cm',
 //         diameter?, side?, length?, width?, depth? }
-export function panVolume(pan) {
-  const k = (pan.unit === 'cm') ? 1 : IN_TO_CM;
+// Returns { volumeMl, resolvedCm, assumptions, error? }. error is set when the
+// shape/unit/dims cannot produce a real volume — callers must not scale from it.
+export function panVolume(pan = {}) {
   const assumptions = [];
-  const d = (v) => (v == null || v === '' ? null : Number(v) * k);
+  const errors = [];
+  const shape = pan.shape;
+  if (!PAN_SHAPES.includes(shape)) {
+    return {
+      volumeMl: null, resolvedCm: {}, assumptions,
+      error: `Unknown pan shape "${shape || ''}". Use ${PAN_SHAPES.join(', ')}.`,
+    };
+  }
+  const unit = pan.unit || 'in';
+  if (!PAN_UNITS.includes(unit)) {
+    return {
+      volumeMl: null, resolvedCm: {}, assumptions,
+      error: `Pan unit must be "in" or "cm", not "${pan.unit}".`,
+    };
+  }
+  const k = unit === 'cm' ? 1 : IN_TO_CM;
+  const invalid = new Set();
+  const read = (v, name) => {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) {
+      errors.push(`${name} must be a positive number`);
+      invalid.add(name);
+      return null;
+    }
+    return n * k;
+  };
 
-  let diameter = d(pan.diameter);
-  let side = d(pan.side);
-  let length = d(pan.length);
-  let width = d(pan.width);
-  let depth = d(pan.depth);
-
-  const shape = pan.shape || 'round';
+  let diameter = read(pan.diameter, 'diameter');
+  let side = read(pan.side, 'side');
+  let length = read(pan.length, 'length');
+  let width = read(pan.width, 'width');
+  let depth = read(pan.depth, 'depth');
 
   if (shape === 'loaf') {
     if (length && !width) { width = length * 0.5; assumptions.push('width taken as 0.5 x length'); }
@@ -60,12 +99,44 @@ export function panVolume(pan) {
   if (shape === 'square' && !depth) { depth = 3 * IN_TO_CM; assumptions.push('depth assumed 3 in'); }
   if (shape === 'rectangular' && !depth) { depth = 2 * IN_TO_CM; assumptions.push('depth assumed 2 in'); }
 
+  if (shape === 'round' || shape === 'bundt') {
+    if (!diameter && !invalid.has('diameter')) errors.push('diameter is required');
+  } else if (shape === 'square') {
+    if (!side && !invalid.has('side')) errors.push('side is required');
+  } else if (shape === 'rectangular') {
+    const missing = [];
+    if (!length && !invalid.has('length')) missing.push('length');
+    if (!width && !invalid.has('width')) missing.push('width');
+    if (missing.length === 2) errors.push('length and width are required');
+    else missing.forEach((n) => errors.push(`${n} is required`));
+  } else if (shape === 'loaf') {
+    if (!length && !invalid.has('length')) errors.push('length is required');
+  }
+
+  if (errors.length) {
+    return {
+      volumeMl: null,
+      resolvedCm: { diameter, side, length, width, depth },
+      assumptions,
+      error: errors.join('; '),
+    };
+  }
+
   let volume = null;
   if (shape === 'round') volume = Math.PI * (diameter / 2) ** 2 * depth;
   else if (shape === 'bundt') { volume = Math.PI * (diameter / 2) ** 2 * depth * 0.75; assumptions.push('bundt hollow approximated as 0.75 x cylinder'); }
   else if (shape === 'square') volume = side * side * depth;
   else if (shape === 'rectangular') volume = length * width * depth;
   else if (shape === 'loaf') volume = length * width * depth;
+
+  if (!(volume > 0) || !Number.isFinite(volume)) {
+    return {
+      volumeMl: null,
+      resolvedCm: { diameter, side, length, width, depth },
+      assumptions,
+      error: 'Pan volume is zero — check the dimensions.',
+    };
+  }
 
   return {
     volumeMl: volume,               // cm^3 == mL
@@ -78,6 +149,10 @@ export function panVolume(pan) {
 // pans: array of pan objects (the reference calibration was a 3-tin bake).
 export function backCalcDensity({ pans, actualBatterG }) {
   const vols = pans.map(panVolume);
+  const bad = vols.find((v) => v.error);
+  if (bad) {
+    return { error: `Every pan needs valid dimensions. ${bad.error}` };
+  }
   const totalVolumeMl = vols.reduce((a, v) => a + (v.volumeMl || 0), 0);
   if (!(totalVolumeMl > 0) || !(actualBatterG > 0)) {
     return { error: 'Need at least one pan with dimensions and a positive batter weight.' };
@@ -111,33 +186,60 @@ export function calculate(input) {
   } = input;
 
   const masterBatterG = master.reduce((a, r) => a + (Number(r.grams) || 0), 0);
+  if (!(masterBatterG > 0)) {
+    throw new CalcError('Master recipe has no ingredient weight to scale from — confirm flagged rows first.');
+  }
+
   const vol = panVolume(pan);
+  if (vol.error || !(vol.volumeMl > 0)) {
+    throw new CalcError(vol.error || 'Pan volume is zero — check the dimensions.');
+  }
   const volumeMl = vol.volumeMl;
+
+  const densityAssumed = Number(batterDensityAssumed);
+  if (!Number.isFinite(densityAssumed) || densityAssumed <= 0) {
+    throw new CalcError('Assumed batter density must be a positive number.');
+  }
+  if (calibrationKPerMl != null && calibrationKPerMl !== '') {
+    const kIn = Number(calibrationKPerMl);
+    if (!Number.isFinite(kIn) || kIn <= 0) {
+      throw new CalcError('Calibration yield must be a positive g batter per mL of pan volume.');
+    }
+  }
 
   const deep = !!pan.deep || pan.shape === 'bundt';
   const fw = fillWindow(cakeTypeKey, deep);
   let fillPct = fw.pct;
   let fillNote = fw.note;
   if (fillPctOverride != null) {
-    fillPct = Array.isArray(fillPctOverride) ? fillPctOverride : [fillPctOverride, fillPctOverride];
+    const pair = Array.isArray(fillPctOverride) ? fillPctOverride : [fillPctOverride, fillPctOverride];
+    const lo = Number(pair[0]);
+    const hi = Number(pair[1] ?? pair[0]);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo <= 0 || hi > 100 || lo > hi) {
+      throw new CalcError('Fill % must be between 0 and 100, with the low end no higher than the high end.');
+    }
+    fillPct = [lo, hi];
     fillNote = 'Fill % entered by baker.';
   }
 
+  const calibrated = hasCalibration(calibrationKPerMl);
+  const k = calibrated ? Number(calibrationKPerMl) : null;
+
   // batter weight
   let batter; // { min, max, accuracy, basis }
-  if (calibrationKPerMl) {
-    const mid = volumeMl * calibrationKPerMl;
+  if (calibrated) {
+    const mid = volumeMl * k;
     batter = {
       min: mid * 0.96, max: mid * 1.04,
       accuracy: ACC.CALCULATED,
-      basis: `recipe calibration: ${round(calibrationKPerMl, 3)} g batter per mL of pan volume (±4%)`,
+      basis: `recipe calibration: ${round(k, 3)} g batter per mL of pan volume (±4%)`,
     };
   } else {
     batter = {
-      min: volumeMl * (fillPct[0] / 100) * batterDensityAssumed,
-      max: volumeMl * (fillPct[1] / 100) * batterDensityAssumed,
+      min: volumeMl * (fillPct[0] / 100) * densityAssumed,
+      max: volumeMl * (fillPct[1] / 100) * densityAssumed,
       accuracy: ACC.ESTIMATED,
-      basis: `generic ${fillPct[0]}–${fillPct[1]}% fill x ${batterDensityAssumed} g/mL assumed batter density`,
+      basis: `generic ${fillPct[0]}–${fillPct[1]}% fill x ${densityAssumed} g/mL assumed batter density`,
     };
   }
 
@@ -241,12 +343,12 @@ export function calculate(input) {
       accuracy: baked.accuracy, retentionPct: ret,
     },
     countAdvice,
-    densitySource: calibrationKPerMl ? 'calibration' : 'generic-fill-table',
-    calibrationKPerMl: calibrationKPerMl || null,
+    densitySource: calibrated ? 'calibration' : 'generic-fill-table',
+    calibrationKPerMl: calibrated ? k : null,
     // batter-per-mL-of-pan-volume actually in use (fill x density), and the
     // density that implies IF the fill matched this cake type's generic table.
-    yieldKPerMl: round(calibrationKPerMl || ((fillPct[0] + fillPct[1]) / 200) * batterDensityAssumed, 3),
-    impliedDensity: round((calibrationKPerMl || ((fillPct[0] + fillPct[1]) / 200) * batterDensityAssumed) /
+    yieldKPerMl: round(calibrated ? k : ((fillPct[0] + fillPct[1]) / 200) * densityAssumed, 3),
+    impliedDensity: round((calibrated ? k : ((fillPct[0] + fillPct[1]) / 200) * densityAssumed) /
       (((fillPct[0] + fillPct[1]) / 2) / 100), 3),
   };
 }

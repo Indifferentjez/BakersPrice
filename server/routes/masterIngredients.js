@@ -28,13 +28,17 @@ router.post('/', (req, res) => {
 router.put('/:key', (req, res) => {
   if (!byKey(req.params.key)) return res.status(404).json({ error: 'Not found' });
   const b = req.body || {};
-  // price-only update vs full edit
-  if (Object.keys(b).every((k) => ['price', 'priceUnit', 'price_unit', 'priceBasis'].includes(k))) {
-    return res.json(updatePrice(req.params.key, {
-      price: b.price, priceUnit: b.priceUnit ?? b.price_unit, priceBasis: b.priceBasis,
-    }));
+  try {
+    // price-only update vs full edit
+    if (Object.keys(b).every((k) => ['price', 'priceUnit', 'price_unit', 'priceBasis'].includes(k))) {
+      return res.json(updatePrice(req.params.key, {
+        price: b.price, priceUnit: b.priceUnit ?? b.price_unit, priceBasis: b.priceBasis,
+      }));
+    }
+    res.json(upsertIngredient({ ...b, key: req.params.key }));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
   }
-  res.json(upsertIngredient({ ...b, key: req.params.key }));
 });
 
 router.delete('/:key', (req, res) => {

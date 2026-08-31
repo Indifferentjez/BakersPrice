@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { panVolume, backCalcDensity, calculate, fillWindow, retentionWindow } from '../lib/calcEngine.js';
+import { panVolume, backCalcDensity, calculate, fillWindow, retentionWindow, CalcError } from '../lib/calcEngine.js';
 
 describe('pan geometry', () => {
   it('round pan volume = pi r^2 h', () => {
@@ -14,6 +14,28 @@ describe('pan geometry', () => {
     expect(v.assumptions.join(' ')).toMatch(/0.3 x length/);
     const L = 9 * 2.54;
     expect(v.volumeMl).toBeCloseTo(L * (L * 0.5) * (L * 0.3), 2);
+  });
+
+  it('rejects missing diameter instead of returning volume 0', () => {
+    const v = panVolume({ shape: 'round', unit: 'in', depth: 3 });
+    expect(v.error).toMatch(/diameter/i);
+    expect(v.volumeMl).toBeNull();
+  });
+
+  it('rejects negative dimensions without also saying they are required', () => {
+    const v = panVolume({ shape: 'round', unit: 'in', diameter: -8, depth: 3 });
+    expect(v.error).toMatch(/positive/i);
+    expect(v.error).not.toMatch(/required/i);
+  });
+
+  it('rejects unknown units instead of treating them as inches', () => {
+    const v = panVolume({ shape: 'round', unit: 'mm', diameter: 200, depth: 50 });
+    expect(v.error).toMatch(/in.*cm/i);
+  });
+
+  it('rejects unknown shapes', () => {
+    const v = panVolume({ shape: 'hexagon', unit: 'in', diameter: 8, depth: 3 });
+    expect(v.error).toMatch(/shape/i);
   });
 
   it('rectangular pan in cm', () => {
@@ -54,6 +76,18 @@ describe('calibration back-calc — reference bake regression', () => {
   it('rejects missing data', () => {
     expect(backCalcDensity({ pans: [], actualBatterG: 100 }).error).toBeTruthy();
     expect(backCalcDensity({ pans: [{ shape: 'round', unit: 'in', diameter: 8 }], actualBatterG: 0 }).error).toBeTruthy();
+  });
+
+  it('rejects a pan with missing dimensions instead of inflating k', () => {
+    const r = backCalcDensity({
+      pans: [
+        { shape: 'round', unit: 'in', diameter: 8, depth: 2 },
+        { shape: 'round', unit: 'in' },
+      ],
+      actualBatterG: 2000,
+    });
+    expect(r.error).toBeTruthy();
+    expect(r.kPerMl).toBeUndefined();
   });
 });
 
@@ -127,6 +161,37 @@ describe('full calculation', () => {
     expect(egg).toBeTruthy();
     expect(Number.isInteger(egg.roundedCount)).toBe(true);
     if (egg.fractional) expect(egg.guidance).toMatch(/weigh|egg/i);
+  });
+
+  it('rejects a calibration yield of 0 instead of producing a zero batter', () => {
+    expect(() => calculate({
+      master, base, cakeTypeKey: 'butter-cake',
+      pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 },
+      calibrationKPerMl: 0,
+    })).toThrow(/positive/i);
+  });
+
+  it('throws when pan dimensions are missing', () => {
+    expect(() => calculate({
+      master, base, cakeTypeKey: 'butter-cake',
+      pan: { shape: 'round', unit: 'in', depth: 3 },
+    })).toThrow(CalcError);
+  });
+
+  it('throws when master batter weight is 0', () => {
+    expect(() => calculate({
+      master: [{ name: 'flour', grams: 0, category: 'flour' }],
+      base: 0, cakeTypeKey: 'unclassified',
+      pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 },
+    })).toThrow(/no ingredient weight/i);
+  });
+
+  it('throws on an invalid fill % override', () => {
+    expect(() => calculate({
+      master, base, cakeTypeKey: 'butter-cake',
+      pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 },
+      fillPctOverride: 140,
+    })).toThrow(/Fill %/i);
   });
 
   it('fill tables match the brief', () => {
