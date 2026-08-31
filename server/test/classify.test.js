@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classify } from '../lib/classify.js';
+import { classify, knownCakeType } from '../lib/classify.js';
 
 // helper: build grams-resolved rows the way the route would
 const g = (name, grams, category, canonical) => ({ name, grams, category, canonical });
@@ -136,5 +136,15 @@ describe('cake-type classification from formula ratios', () => {
     const r = classify(rows);
     expect(r.detected).toBe('unclassified');
     expect(r.label).toBe('No strong match');
+  });
+});
+
+describe('knownCakeType', () => {
+  it('accepts catalogue keys and treats blank as no override', () => {
+    expect(knownCakeType('butter-cake')).toBe('butter-cake');
+    expect(knownCakeType('unclassified')).toBe('unclassified');
+    expect(knownCakeType(null)).toBeNull();
+    expect(knownCakeType('')).toBeNull();
+    expect(knownCakeType('sheet-cake')).toBeNull();
   });
 });

@@ -316,12 +316,16 @@ export function removeIngredient(key) {
 
 // Bulk price import. rows: [{ name, price, priceUnit }]  (name matched via resolve)
 export function importPrices(rows = []) {
-  const out = { updated: [], unmatched: [] };
+  const out = { updated: [], unmatched: [], skipped: [] };
   const tx = db.transaction((list) => {
     for (const row of list) {
       const hit = matchIn(db.prepare('SELECT * FROM master_ingredients').all().map(normEntry), row.name);
       if (!hit) { out.unmatched.push(row.name); continue; }
-      updatePriceInternal(hit.key, row.price, row.priceUnit || hit.priceUnit, row.priceBasis || 'Aldi');
+      const applied = updatePriceInternal(hit.key, row.price, row.priceUnit || hit.priceUnit, row.priceBasis || 'Aldi');
+      if (!applied) {
+        out.skipped.push({ name: row.name, key: hit.key, reason: 'negative price' });
+        continue;
+      }
       out.updated.push({ name: row.name, key: hit.key });
     }
   });
@@ -331,11 +335,12 @@ export function importPrices(rows = []) {
 }
 function updatePriceInternal(key, price, priceUnit, basis) {
   const p = numOrNull(price);
-  if (p != null && p < 0) return;
+  if (p != null && p < 0) return false;
   db.prepare(
     `UPDATE master_ingredients SET price=@price, price_unit=@priceUnit, price_basis=@basis,
      price_updated_at=datetime('now'), updated_at=datetime('now') WHERE key=@key`,
   ).run({ key, price: p, priceUnit: PRICE_UNITS.includes(priceUnit) ? priceUnit : 'kg', basis });
+  return true;
 }
 
 function slugify(s) {

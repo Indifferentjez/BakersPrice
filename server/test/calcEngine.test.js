@@ -22,9 +22,10 @@ describe('pan geometry', () => {
     expect(v.volumeMl).toBeNull();
   });
 
-  it('rejects negative dimensions', () => {
+  it('rejects negative dimensions without also saying they are required', () => {
     const v = panVolume({ shape: 'round', unit: 'in', diameter: -8, depth: 3 });
     expect(v.error).toMatch(/positive/i);
+    expect(v.error).not.toMatch(/required/i);
   });
 
   it('rejects unknown units instead of treating them as inches', () => {
@@ -162,16 +163,12 @@ describe('full calculation', () => {
     if (egg.fractional) expect(egg.guidance).toMatch(/weigh|egg/i);
   });
 
-  it('uses a saved calibration of 0 instead of falling back to the generic table', () => {
-    const c = calculate({
+  it('rejects a calibration yield of 0 instead of producing a zero batter', () => {
+    expect(() => calculate({
       master, base, cakeTypeKey: 'butter-cake',
       pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 },
       calibrationKPerMl: 0,
-    });
-    expect(c.densitySource).toBe('calibration');
-    expect(c.calibrationKPerMl).toBe(0);
-    expect(c.batter.min).toBe(0);
-    expect(c.batter.max).toBe(0);
+    })).toThrow(/positive/i);
   });
 
   it('throws when pan dimensions are missing', () => {

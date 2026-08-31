@@ -26,6 +26,11 @@ export const CAKE_TYPES = [
   { key: 'unclassified', label: 'No strong match' },
 ];
 
+export function knownCakeType(key) {
+  if (key == null || key === '') return null;
+  return CAKE_TYPES.some((t) => t.key === key) ? key : null;
+}
+
 // Numeric ratio windows per type. Values are percent of dry base.
 // Any ratio not listed for a type is simply not scored for it.
 const PROFILES = {

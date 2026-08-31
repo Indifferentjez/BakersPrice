@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { resolveRecipe } from '../lib/recipe.js';
-import { classify, CAKE_TYPES } from '../lib/classify.js';
+import { classify, CAKE_TYPES, knownCakeType } from '../lib/classify.js';
 import { calculate, hasCalibration, PAN_SHAPES, PAN_UNITS, CalcError } from '../lib/calcEngine.js';
 import { priceBake } from '../lib/cost.js';
 import { pricesByKey } from '../lib/masterIngredients.js';
@@ -59,6 +59,8 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Provide recipeId or a master ingredient list.' });
   }
 
+  // grams == null is the live signal from measure.js; needsConfirm is kept for
+  // saved recipes and any future path that flags a row while still attaching grams.
   const unresolved = master.filter((m) => m.grams == null || m.needsConfirm);
   if (unresolved.length) {
     return res.status(400).json({
@@ -67,16 +69,15 @@ router.post('/', (req, res) => {
     });
   }
 
-  const allowedTypes = new Set(CAKE_TYPES.map((t) => t.key));
-  if (body.cakeTypeKey && !allowedTypes.has(body.cakeTypeKey)) {
+  if (body.cakeTypeKey && !knownCakeType(body.cakeTypeKey)) {
     return res.status(400).json({ error: `Unknown cake type "${body.cakeTypeKey}".` });
   }
 
   const cakeTypeKey =
-    body.cakeTypeKey ||
-    recipeRow?.type_override ||
-    recipeRow?.detected_type ||
-    classification.detected ||
+    knownCakeType(body.cakeTypeKey) ||
+    knownCakeType(recipeRow?.type_override) ||
+    knownCakeType(recipeRow?.detected_type) ||
+    knownCakeType(classification.detected) ||
     'unclassified';
 
   // ---- density: explicit > recipe calibration default > generic fill table ----

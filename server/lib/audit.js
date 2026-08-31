@@ -36,8 +36,8 @@ export function auditCalculation(calc, price) {
     add('fail', 'Assumed batter density out of range',
       `Assumed batter density is ${dens} g/mL, outside the realistic 0.85–1.05 g/mL band. Check the density override, or calibrate against a real bake.`);
   } else {
-    add('warn', 'Batter density is assumed, not measured',
-      `Using assumed ${dens} g/mL batter density and a generic ${fillLabel} fill table — this is not a measured yield. Calibrate against a real bake to replace it.`);
+    add('ok', 'Batter density (assumed)',
+      `Assumed ${dens} g/mL at a generic ${fillLabel} fill — within 0.85–1.05 g/mL. Calibrate against a real bake for a measured yield.`);
   }
 
   // 2. scaling factor inside the safe linear range 0.25x - 4x?

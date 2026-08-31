@@ -20,7 +20,7 @@ export class CalcError extends Error {
 }
 
 export function hasCalibration(k) {
-  return k != null && k !== '' && Number.isFinite(Number(k));
+  return k != null && k !== '' && Number.isFinite(Number(k)) && Number(k) > 0;
 }
 
 // cake-type key -> generic fill % window and baked-weight retention % window.
@@ -73,11 +73,13 @@ export function panVolume(pan = {}) {
     };
   }
   const k = unit === 'cm' ? 1 : IN_TO_CM;
+  const invalid = new Set();
   const read = (v, name) => {
     if (v == null || v === '') return null;
     const n = Number(v);
     if (!Number.isFinite(n) || n <= 0) {
       errors.push(`${name} must be a positive number`);
+      invalid.add(name);
       return null;
     }
     return n * k;
@@ -98,13 +100,17 @@ export function panVolume(pan = {}) {
   if (shape === 'rectangular' && !depth) { depth = 2 * IN_TO_CM; assumptions.push('depth assumed 2 in'); }
 
   if (shape === 'round' || shape === 'bundt') {
-    if (!diameter) errors.push('diameter is required');
+    if (!diameter && !invalid.has('diameter')) errors.push('diameter is required');
   } else if (shape === 'square') {
-    if (!side) errors.push('side is required');
+    if (!side && !invalid.has('side')) errors.push('side is required');
   } else if (shape === 'rectangular') {
-    if (!length || !width) errors.push('length and width are required');
+    const missing = [];
+    if (!length && !invalid.has('length')) missing.push('length');
+    if (!width && !invalid.has('width')) missing.push('width');
+    if (missing.length === 2) errors.push('length and width are required');
+    else missing.forEach((n) => errors.push(`${n} is required`));
   } else if (shape === 'loaf') {
-    if (!length) errors.push('length is required');
+    if (!length && !invalid.has('length')) errors.push('length is required');
   }
 
   if (errors.length) {
@@ -193,6 +199,12 @@ export function calculate(input) {
   const densityAssumed = Number(batterDensityAssumed);
   if (!Number.isFinite(densityAssumed) || densityAssumed <= 0) {
     throw new CalcError('Assumed batter density must be a positive number.');
+  }
+  if (calibrationKPerMl != null && calibrationKPerMl !== '') {
+    const kIn = Number(calibrationKPerMl);
+    if (!Number.isFinite(kIn) || kIn <= 0) {
+      throw new CalcError('Calibration yield must be a positive g batter per mL of pan volume.');
+    }
   }
 
   const deep = !!pan.deep || pan.shape === 'bundt';

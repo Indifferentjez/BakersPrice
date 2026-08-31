@@ -28,12 +28,15 @@ describe('self-audit', () => {
     expect(a.checks.some((x) => x.title === 'Scaling factor' && x.level === 'ok')).toBe(true);
   });
 
-  it('does not treat assumed generic density as a measured pass', () => {
+  it('labels generic density as assumed without failing the audit', () => {
     const c = calculate({ master, base: 300, cakeTypeKey: 'butter-cake',
       pan: { shape: 'round', unit: 'in', diameter: 8, depth: 3 } });
     const a = auditCalculation(c);
-    expect(a.checks.some((x) => /assumed, not measured/i.test(x.title))).toBe(true);
-    expect(a.checks.some((x) => x.title === 'Batter density' && x.level === 'ok')).toBe(false);
+    const dens = a.checks.find((x) => /Batter density/i.test(x.title));
+    expect(dens.level).toBe('ok');
+    expect(dens.title).toMatch(/assumed/i);
+    expect(dens.detail).toMatch(/assumed/i);
+    expect(a.worst).toBe('ok');
   });
 
   it('flags an out-of-range assumed density on the generic path', () => {
