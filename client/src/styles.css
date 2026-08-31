@@ -15,11 +15,15 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5;
+  -webkit-text-size-adjust: 100%; overflow-wrap: break-word;
+}
 a { color: var(--accent); }
-h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 .4em; }
-h1 { font-size: 1.5rem; }
-h2 { font-size: 1.15rem; }
+img, svg, video, canvas { max-width: 100%; height: auto; }
+h1, h2, h3, h4 { line-height: 1.25; margin: 0 0 .4em; overflow-wrap: anywhere; }
+h1 { font-size: clamp(1.25rem, 1.05rem + 1vw, 1.5rem); }
+h2 { font-size: clamp(1.05rem, 0.98rem + 0.4vw, 1.15rem); }
 h3 { font-size: 1rem; }
 small { color: var(--soft); }
 
@@ -30,14 +34,25 @@ small { color: var(--soft); }
 }
 .brand { font-weight: 700; letter-spacing: .3px; }
 .brand span { color: var(--accent); }
-.nav { display: flex; gap: 4px; margin-left: auto; }
+
+/* Hamburger — hidden on desktop, shown by the responsive block below */
+.nav-toggle {
+  display: none; margin-left: auto;
+  background: #fff; color: var(--ink); border: 1px solid var(--line);
+  padding: 6px 12px; font-size: 1.15rem; line-height: 1; border-radius: 8px;
+}
+.nav-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Wrapper around the links + session block. Desktop: right-aligned flex row. */
+.site-nav { display: flex; align-items: center; gap: 18px; margin-left: auto; }
+.nav { display: flex; gap: 4px; }
 .nav a {
   padding: 6px 12px; border-radius: 999px; text-decoration: none;
   color: var(--soft); font-size: .9rem;
 }
 .nav a.active { background: var(--accent-soft); color: var(--accent); }
 .nav-session {
-  display: flex; align-items: center; gap: 10px; margin-left: 8px;
+  display: flex; align-items: center; gap: 10px;
   font-size: .88rem; white-space: nowrap;
 }
 .nav-session a {
@@ -48,7 +63,7 @@ small { color: var(--soft); }
 .nav-session .muted { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 
 .auth-panel { max-width: 420px; }
-.google-btn { display: flex; justify-content: center; min-height: 40px; }
+.google-btn { display: flex; justify-content: center; min-height: 40px; max-width: 100%; overflow: hidden; }
 
 .panel {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -76,6 +91,10 @@ button.ghost { background: #fff; color: var(--accent); }
 button.subtle { background: #fff; color: var(--soft); border-color: var(--line); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button.sm { padding: 4px 10px; font-size: .85rem; }
+
+/* Any table that might be wider than its panel goes in one of these so the
+   TABLE scrolls inside the card — the page/body never scrolls sideways. */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
 th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
@@ -114,7 +133,7 @@ tr.flagged td { background: #fdf4ec; }
 .steps button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .steps button.done { color: var(--accent); border-color: var(--accent-soft); }
 
-.big-price { font-size: 2rem; font-weight: 700; }
+.big-price { font-size: clamp(1.5rem, 1.2rem + 1.5vw, 2rem); font-weight: 700; }
 .muted { color: var(--soft); }
 .warnbox { background: #fdf4ec; border: 1px solid #eccfb5; border-radius: 8px; padding: 10px 12px; font-size: .9rem; }
 .errbox { background: #fbeaea; border: 1px solid #e5c0c0; border-radius: 8px; padding: 10px 12px; font-size: .9rem; color: var(--fail); }
@@ -122,27 +141,97 @@ tr.flagged td { background: #fdf4ec; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
 
-.tierbtns { display: flex; gap: 10px; }
-.tierbtns .tier { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; background: #fff; text-align: left; color: var(--ink); }
+.tierbtns { display: flex; gap: 10px; flex-wrap: wrap; }
+.tierbtns .tier { flex: 1 1 140px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; background: #fff; text-align: left; color: var(--ink); }
 .tierbtns .tier.sel { border-color: var(--accent); background: var(--accent-soft); }
-.tierbtns .tier .amt { font-size: 1.3rem; font-weight: 700; }
+.tierbtns .tier .amt { font-size: clamp(1.1rem, 1rem + 0.6vw, 1.3rem); font-weight: 700; overflow-wrap: anywhere; }
 
 /* ---- customer page ---- */
 .customer {
-  max-width: 640px; margin: 40px auto; background: #fff; border: 1px solid var(--line);
-  border-radius: 12px; padding: 40px; box-shadow: var(--shadow);
+  max-width: 640px; margin: clamp(16px, 5vw, 40px) auto; background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; padding: clamp(20px, 5vw, 40px); box-shadow: var(--shadow);
 }
-.customer .biz { font-size: 1.6rem; font-weight: 700; }
+.customer .biz { font-size: clamp(1.3rem, 1.1rem + 1vw, 1.6rem); font-weight: 700; overflow-wrap: anywhere; }
 .customer .kind { color: var(--soft); margin-bottom: 20px; }
 .customer hr { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
-.customer .cake { font-size: 1.25rem; font-weight: 700; }
-.customer .line { display: flex; justify-content: space-between; padding: 6px 0; }
-.customer .final { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
-.customer .final .amt { font-size: 1.8rem; font-weight: 700; }
+.customer .cake { font-size: clamp(1.1rem, 1rem + 0.6vw, 1.25rem); font-weight: 700; overflow-wrap: anywhere; }
+.customer .line { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.customer .line span:last-child { text-align: right; }
+.customer .final { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 8px; }
+.customer .final .amt { font-size: clamp(1.4rem, 1.15rem + 1.2vw, 1.8rem); font-weight: 700; overflow-wrap: anywhere; }
 .customer .note { font-style: italic; margin-top: 16px; }
 .customer .allergen { font-size: .85rem; color: var(--soft); margin-top: 16px; }
 .customer .foot { text-align: center; color: var(--soft); font-size: .8rem; margin-top: 30px; }
-.printbar { max-width: 640px; margin: 20px auto 0; display: flex; gap: 10px; justify-content: center; }
+.printbar {
+  max-width: 640px; margin: 20px auto 0; display: flex; gap: 10px;
+  justify-content: center; flex-wrap: wrap; padding: 0 clamp(16px, 5vw, 40px);
+}
+
+/* ============================================================
+   Responsive — mobile & tablet. Desktop (>760px) is unchanged.
+   ============================================================ */
+
+/* --- Tablet / small-laptop: collapse the header into a menu --- */
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; gap: 12px; }
+  .nav-toggle { display: inline-flex; align-items: center; justify-content: center; }
+
+  .site-nav {
+    display: none; flex-basis: 100%; flex-direction: column;
+    align-items: stretch; gap: 4px; margin-left: 0; margin-top: 4px;
+  }
+  .site-nav.open { display: flex; }
+
+  .site-nav .nav { flex-direction: column; align-items: stretch; gap: 2px; }
+  .site-nav .nav a { padding: 10px 12px; border-radius: 8px; }
+
+  .site-nav .nav-session {
+    flex-direction: column; align-items: stretch; gap: 8px;
+    white-space: normal; margin-top: 6px; padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+  .site-nav .nav-session .muted { max-width: none; }
+  .site-nav .nav-session a { padding: 10px 12px; border-radius: 8px; }
+  .site-nav .nav-session button { width: 100%; }
+}
+
+/* --- Phones: stack rows, tighten chrome --- */
+@media (max-width: 560px) {
+  .row { flex-direction: column; gap: 10px; }
+  .row > * { width: 100%; min-width: 0; }
+
+  .tierbtns { flex-direction: column; }
+  .tierbtns .tier { flex: 1 1 auto; width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .app { padding: 0 14px 60px; }
+  .panel { padding: 16px; }
+  button.sm { padding: 6px 12px; }
+}
+
+/* --- Editable list tables → labelled cards on phones --- */
+@media (max-width: 640px) {
+  .table-stack thead { display: none; }
+  .table-stack, .table-stack tbody, .table-stack tr, .table-stack td { display: block; width: 100%; }
+  .table-stack tr {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 10px; margin-bottom: 12px;
+  }
+  .table-stack tr.flagged { background: #fdf4ec; }
+  .table-stack td {
+    border: 0; padding: 6px 0; display: flex; gap: 10px; align-items: center;
+  }
+  .table-stack td::before {
+    content: attr(data-label);
+    flex: 0 0 40%; font-size: .72rem; color: var(--soft);
+    text-transform: uppercase; letter-spacing: .4px;
+  }
+  .table-stack td[data-label=""]::before { content: none; }
+  .table-stack td[data-label=""] { justify-content: flex-end; }
+  .table-stack td > * { flex: 1; min-width: 0; }
+  .table-stack td[data-label=""] > * { flex: 0 0 auto; }
+}
 
 @media print {
   .printbar, .topbar { display: none; }

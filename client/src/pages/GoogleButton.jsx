@@ -31,10 +31,13 @@ export default function GoogleButton({ clientId, onCredential, disabled }) {
         client_id: clientId,
         callback: (res) => { if (res?.credential) onCredential(res.credential); },
       });
+      // GIS needs a pixel width (valid range ~200–400). Fit it to the slot so
+      // it never overflows a narrow auth card on a phone.
+      const avail = slot.current.offsetWidth || 320;
       window.google.accounts.id.renderButton(slot.current, {
         theme: 'outline',
         size: 'large',
-        width: 320,
+        width: Math.max(200, Math.min(400, Math.round(avail))),
         text: 'continue_with',
       });
     }).catch(() => {});

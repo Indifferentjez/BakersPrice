@@ -113,6 +113,7 @@ export default function MasterIngredients() {
       </div>
 
       <div className="panel">
+        <div className="table-wrap">
         <table>
           <thead><tr><th>Ingredient</th><th>Type</th><th>Conversion</th><th>Price</th><th>Basis</th><th /></tr></thead>
           <tbody>
@@ -142,6 +143,7 @@ export default function MasterIngredients() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="panel">

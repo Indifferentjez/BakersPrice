@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
 import RecipeList from './pages/RecipeList.jsx';
@@ -13,6 +14,16 @@ function Shell({ children }) {
   const { user, logout } = useAuth();
   const loc = useLocation();
   const nav = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Close the mobile menu on navigation and on Escape.
+  useEffect(() => { setMenuOpen(false); }, [loc.pathname]);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   const onLogout = async () => {
     await logout();
@@ -23,21 +34,33 @@ function Shell({ children }) {
     <div className="app">
       <div className="topbar">
         <div className="brand">Bakers<span>Price</span></div>
-        <nav className="nav">
-          <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>Recipes</NavLink>
-          <NavLink to="/quotes" className={({ isActive }) => (isActive ? 'active' : '')}>Quotes</NavLink>
-          <NavLink to="/ingredients" className={({ isActive }) => (isActive ? 'active' : '')}>Ingredients</NavLink>
-          <NavLink to="/defaults" className={({ isActive }) => (isActive ? 'active' : '')}>Defaults</NavLink>
-        </nav>
-        <div className="nav-session">
-          {user ? (
-            <>
-              <span className="muted" title={user.email}>{user.email}</span>
-              <button className="subtle sm" type="button" onClick={onLogout}>Log out</button>
-            </>
-          ) : (
-            <NavLink to={`/login?next=${encodeURIComponent(loc.pathname === '/login' || loc.pathname === '/signup' ? '/' : loc.pathname)}`} className={({ isActive }) => (isActive ? 'active' : '')}>Log in</NavLink>
-          )}
+        <button
+          type="button"
+          className="nav-toggle"
+          aria-expanded={menuOpen}
+          aria-controls="site-nav"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          {menuOpen ? '✕' : '☰'}
+        </button>
+        <div className={`site-nav${menuOpen ? ' open' : ''}`} id="site-nav">
+          <nav className="nav">
+            <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>Recipes</NavLink>
+            <NavLink to="/quotes" className={({ isActive }) => (isActive ? 'active' : '')}>Quotes</NavLink>
+            <NavLink to="/ingredients" className={({ isActive }) => (isActive ? 'active' : '')}>Ingredients</NavLink>
+            <NavLink to="/defaults" className={({ isActive }) => (isActive ? 'active' : '')}>Defaults</NavLink>
+          </nav>
+          <div className="nav-session">
+            {user ? (
+              <>
+                <span className="muted" title={user.email}>{user.email}</span>
+                <button className="subtle sm" type="button" onClick={onLogout}>Log out</button>
+              </>
+            ) : (
+              <NavLink to={`/login?next=${encodeURIComponent(loc.pathname === '/login' || loc.pathname === '/signup' ? '/' : loc.pathname)}`} className={({ isActive }) => (isActive ? 'active' : '')}>Log in</NavLink>
+            )}
+          </div>
         </div>
       </div>
       {children}

@@ -451,7 +451,8 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
     <>
       <div className="panel">
         <h2>Confirm the ingredients <span className="sub">the original measurement is kept — grams are added, not substituted</span></h2>
-        <table>
+        <div className="table-wrap">
+        <table className="table-stack">
           <thead>
             <tr><th>Ingredient</th><th style={{ width: 64 }}>Qty</th><th style={{ width: 84 }}>Unit</th><th>Measured as</th><th style={{ width: 130 }}>Override wt (g)</th><th /></tr>
           </thead>
@@ -461,20 +462,21 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
               const flagged = info && (info.needsConfirm || info.grams == null);
               return (
                 <tr key={i} className={flagged ? 'flagged' : ''}>
-                  <td><input value={r.name} onChange={(e) => set(i, 'name', e.target.value)} /></td>
-                  <td><input value={r.quantity} onChange={(e) => set(i, 'quantity', e.target.value)} /></td>
-                  <td><input value={r.unit} onChange={(e) => set(i, 'unit', e.target.value)} placeholder="g / cup / each" /></td>
-                  <td style={{ fontSize: '.85rem' }}><MeasuredCell info={info} /></td>
-                  <td>
+                  <td data-label="Ingredient"><input value={r.name} onChange={(e) => set(i, 'name', e.target.value)} /></td>
+                  <td data-label="Qty"><input value={r.quantity} onChange={(e) => set(i, 'quantity', e.target.value)} /></td>
+                  <td data-label="Unit"><input value={r.unit} onChange={(e) => set(i, 'unit', e.target.value)} placeholder="g / cup / each" /></td>
+                  <td data-label="Measured as" style={{ fontSize: '.85rem' }}><span><MeasuredCell info={info} /></span></td>
+                  <td data-label="Override wt (g)">
                     <input value={r.grams ?? ''} onChange={(e) => set(i, 'grams', e.target.value)}
                       placeholder={info?.grams != null ? 'optional' : 'enter g'} />
                   </td>
-                  <td style={{ textAlign: 'right' }}><button className="subtle sm" onClick={() => del(i)}>✕</button></td>
+                  <td data-label="" style={{ textAlign: 'right' }}><button className="subtle sm" onClick={() => del(i)}>✕</button></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        </div>
         <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="ghost sm" onClick={add}>+ Row</button>
           <button className="sm" onClick={recheck} disabled={busy}>Re-check weights</button>
@@ -719,6 +721,7 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
   return (
     <div className="panel">
       <h3>Ingredient prices <span className="muted" style={{ fontWeight: 400 }}>— from the master catalogue; override for this recipe only</span></h3>
+      <div className="table-wrap">
       <table>
         <thead><tr><th>Ingredient</th><th>Amount</th><th>Source</th><th>Unit £</th><th>Line £</th><th>Override for this recipe</th></tr></thead>
         <tbody>
@@ -752,6 +755,7 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
           })}
         </tbody>
       </table>
+      </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="sm" disabled={busy || !dirty} onClick={() => recalcWithOverrides(cleanOverrides(draft))}>Apply overrides &amp; re-price</button>
         <button className="ghost sm" disabled={busy} onClick={async () => { await saveOverridesToRecipe(cleanOverrides(draft)); setPushMsg('Saved to recipe.'); }}>Save overrides to this recipe</button>
@@ -801,6 +805,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
     <>
       <div className="panel">
         <h2>Calculated size &amp; weight <span className="sub">baker-only view — every figure is labelled</span></h2>
+        <div className="table-wrap">
         <table>
           <tbody>
             <tr><td>Cake type used</td><td>{cakeTypeKey}</td><td><Badge accuracy={typeof calc.classification?.confidence === 'number' && calc.classification.detected !== 'unclassified' ? 'ESTIMATED' : 'REQUIRES_TESTING'} /></td></tr>
@@ -813,6 +818,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
             <tr><td>Implied batter density</td><td>{c.impliedDensity} g/mL</td><td><Badge accuracy="CALCULATED" /></td></tr>
           </tbody>
         </table>
+        </div>
         {(c.countAdvice || []).map((a, i) => (
           <div key={i} className={a.warnRounding ? 'warnbox' : 'okbox'} style={{ marginTop: 12 }}>
             <strong style={{ textTransform: 'capitalize' }}>{a.noun}s:</strong> {a.guidance} {a.note || ''}
@@ -822,6 +828,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
 
       <div className="panel">
         <h3>Scaled ingredient list (target size)</h3>
+        <div className="table-wrap">
         <table>
           <thead><tr><th>Ingredient</th><th>Master recipe</th><th>Scaled</th></tr></thead>
           <tbody>
@@ -843,6 +850,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
             ))}
           </tbody>
         </table>
+        </div>
         <p className="muted" style={{ fontSize: '.82rem' }}>Weight rows scale by the mid factor; count rows scale to a whole number and show the estimated weight range. <Badge accuracy="CALCULATED" /></p>
       </div>
 
@@ -851,6 +859,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
       <div className="panel">
         <h3>Cost &amp; price <span className="muted" style={{ fontWeight: 400 }}>— baker-only, never shown to customers</span></h3>
         <EstimateBanner price={price} cur={cur} />
+        <div className="table-wrap">
         <table>
           <tbody>
             <tr>
@@ -888,6 +897,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
             </tr>
           </tbody>
         </table>
+        </div>
         <div className="tierbtns" style={{ marginTop: 14 }}>
           {['minimum', 'standard', 'premium'].map((t) => {
             const est = price.estimate?.isEstimate;

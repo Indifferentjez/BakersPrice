@@ -52,24 +52,26 @@ export default function RecipeList() {
       <div className="panel">
         {recipes.length === 0 && <p className="muted">{user ? 'No recipes yet.' : 'No recipes to show until you log in.'}</p>}
         {recipes.length > 0 && (
-          <table>
+          <div className="table-wrap">
+          <table className="table-stack">
             <thead>
               <tr><th>Name</th><th>Detected type</th><th>Calibration</th><th>Updated</th><th /></tr>
             </thead>
             <tbody>
               {recipes.map((r) => (
                 <tr key={r.id}>
-                  <td><a onClick={() => nav(`/recipe/${r.id}`)} style={{ cursor: 'pointer' }}>{r.name}</a></td>
-                  <td>{r.type_override || r.detected_type || '—'}{r.type_override && <span className="muted"> (override)</span>}</td>
-                  <td>{r.default_k_per_ml ? `${r.default_k_per_ml.toFixed(3)} g/mL` : <span className="muted">generic</span>}</td>
-                  <td className="muted">{r.updated_at?.slice(0, 10)}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td data-label="Name"><a onClick={() => nav(`/recipe/${r.id}`)} style={{ cursor: 'pointer' }}>{r.name}</a></td>
+                  <td data-label="Detected type">{r.type_override || r.detected_type || '—'}{r.type_override && <span className="muted"> (override)</span>}</td>
+                  <td data-label="Calibration">{r.default_k_per_ml ? `${r.default_k_per_ml.toFixed(3)} g/mL` : <span className="muted">generic</span>}</td>
+                  <td data-label="Updated" className="muted">{r.updated_at?.slice(0, 10)}</td>
+                  <td data-label="" style={{ textAlign: 'right' }}>
                     <button className="subtle sm" onClick={() => remove(r.id)}>Delete</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </>
