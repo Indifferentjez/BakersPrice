@@ -93,32 +93,32 @@ export default function MasterIngredients() {
       )}
 
       <div className="panel">
-        <div className="row-actions" style={{ alignItems: 'flex-end' }}>
-          <div style={{ flex: '1 1 220px', maxWidth: 320 }}>
+        <div className="row-actions toolbar">
+          <div className="search-wrap">
             <label htmlFor="ing-search">Search ingredients</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }}>
+            <div className="search-field">
+              <span className="search-field__icon">
                 <IconSearch size={16} />
               </span>
-              <input id="ing-search" placeholder="flour, eggs…" value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 32 }} />
+              <input id="ing-search" placeholder="flour, eggs…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
           </div>
           <button className="ghost" disabled={!user} onClick={() => setAdding((a) => !a)}>{adding ? 'Cancel' : 'New ingredient'}</button>
         </div>
-        <p className="caption" style={{ marginTop: 8 }}>
+        <p className="caption mt-2">
           Prices default to Aldi. Recipes use these automatically; a per-recipe override never changes them unless you push it here.
         </p>
 
         {adding && (
-          <form onSubmit={addIngredient} className="row" style={{ alignItems: 'flex-end', marginTop: 12 }}>
-            <div style={{ flex: 2 }}><label>Name</label><input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} required /></div>
+          <form onSubmit={addIngredient} className="add-form mt-3">
+            <div className="span-2"><label>Name</label><input value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} required /></div>
             <div><label>Type</label>
               <select value={form.measurement_type} onChange={(e) => setForm({ ...form, measurement_type: e.target.value })}>
                 <option value="weight">weight</option><option value="volume">volume</option><option value="count">count</option>
               </select>
             </div>
             <div><label>Category</label><input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></div>
-            <div style={{ flex: 2 }}><label>Aliases (comma sep)</label><input value={form.aliases} onChange={(e) => setForm({ ...form, aliases: e.target.value })} /></div>
+            <div className="span-2"><label>Aliases (comma sep)</label><input value={form.aliases} onChange={(e) => setForm({ ...form, aliases: e.target.value })} /></div>
             {form.measurement_type === 'volume' && <div><label>g / cup</label><input type="number" value={form.density_g_per_cup} onChange={(e) => setForm({ ...form, density_g_per_cup: e.target.value })} /></div>}
             {form.measurement_type === 'count' && <>
               <div><label>g/unit min</label><input type="number" value={form.grams_per_unit_min} onChange={(e) => setForm({ ...form, grams_per_unit_min: e.target.value })} /></div>
@@ -127,7 +127,7 @@ export default function MasterIngredients() {
             </>}
             <div><label>Price £</label><input type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></div>
             <div><label>per</label><select value={form.price_unit} onChange={(e) => setForm({ ...form, price_unit: e.target.value })}>{units.map((u) => <option key={u}>{u}</option>)}</select></div>
-            <div style={{ flex: '0 0 auto' }}><button type="submit">Add</button></div>
+            <div><button type="submit">Add</button></div>
           </form>
         )}
       </div>
@@ -147,11 +147,11 @@ export default function MasterIngredients() {
                       <td data-label="Ingredient">
                         <span>
                           {it.displayName}
-                          <span className="caption" style={{ display: 'block' }}>{(it.aliases || []).slice(0, 4).join(', ')}</span>
+                          <span className="caption d-block">{(it.aliases || []).slice(0, 4).join(', ')}</span>
                         </span>
                       </td>
                       <td data-label="Type">{it.measurementType}</td>
-                      <td data-label="Conversion" className="muted" style={{ fontSize: '.85rem' }}>{convInfo(it)}</td>
+                      <td data-label="Conversion" className="muted caption">{convInfo(it)}</td>
                       <td data-label="Price">
                         <div className="cell-inline">
                           £<input type="number" step="0.01"
@@ -163,8 +163,8 @@ export default function MasterIngredients() {
                         </div>
                       </td>
                       <td data-label="Basis" className="muted">{it.priceBasis}</td>
-                      <td data-label="" style={{ textAlign: 'right' }}>
-                        {user && <button className="danger sm" onClick={async () => { await api.del(`/api/master-ingredients/${it.key}`); load(); }}>Delete</button>}
+                      <td data-label="">
+                        {user && <button className="danger sm" onClick={async () => { if (!confirm(`Delete ${it.displayName} from the catalogue?`)) return; await api.del(`/api/master-ingredients/${it.key}`); load(); }}>Delete</button>}
                       </td>
                     </tr>
                   );
@@ -177,8 +177,8 @@ export default function MasterIngredients() {
 
       <div className="panel">
         <h3>Bulk price import <span className="sub">paste your Aldi list — one per line: <code>name, unit, price</code> (or <code>name, price</code>)</span></h3>
-        <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={'plain flour, kg, 1.09\ncaster sugar, kg, 0.89\nlarge eggs, each, 0.22\nbutter, kg, 1.79'} style={{ minHeight: 120 }} />
-        <div className="row-actions" style={{ marginTop: 8 }}>
+        <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={'plain flour, kg, 1.09\ncaster sugar, kg, 0.89\nlarge eggs, each, 0.22\nbutter, kg, 1.79'} className="import-textarea" />
+        <div className="row-actions mt-2">
           <button onClick={runImport} disabled={!user || !importText.trim()}>Import prices</button>
           {importMsg && <span className="muted">{importMsg}</span>}
         </div>

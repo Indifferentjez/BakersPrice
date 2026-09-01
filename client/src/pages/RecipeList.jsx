@@ -50,7 +50,7 @@ export default function RecipeList() {
       />
 
       {!llm && (
-        <div className="infobox" style={{ marginBottom: 16 }}>
+        <div className="infobox mb-3">
           Photo / PDF / paste auto-parsing is off (no <code>ANTHROPIC_API_KEY</code> on the server).
           You can still enter recipes by hand — everything else works.
         </div>
@@ -67,7 +67,7 @@ export default function RecipeList() {
           <EmptyState
             icon={<IconFile size={28} />}
             title={user ? 'No recipes yet' : 'Nothing saved yet'}
-            action={user ? newRecipeBtn : null}
+            action={newRecipeBtn}
           >
             {user
               ? 'Add your first recipe to scale it to any tin and build a customer quote.'
@@ -84,11 +84,11 @@ export default function RecipeList() {
               <tbody>
                 {recipes.map((r) => (
                   <tr key={r.id}>
-                    <td data-label="Name"><a onClick={() => nav(`/recipe/${r.id}`)} style={{ cursor: 'pointer' }}>{r.name}</a></td>
+                    <td data-label="Name"><a className="linkish" onClick={() => nav(`/recipe/${r.id}`)}>{r.name}</a></td>
                     <td data-label="Detected type">{r.type_override || r.detected_type || '—'}{r.type_override && <span className="muted"> (override)</span>}</td>
                     <td data-label="Calibration">{r.default_k_per_ml ? `${r.default_k_per_ml.toFixed(3)} g/mL` : <span className="muted">generic</span>}</td>
                     <td data-label="Updated" className="muted">{r.updated_at?.slice(0, 10)}</td>
-                    <td data-label="" style={{ textAlign: 'right' }}>
+                    <td data-label="">
                       <button className="danger sm" onClick={() => remove(r.id)}>Delete</button>
                     </td>
                   </tr>

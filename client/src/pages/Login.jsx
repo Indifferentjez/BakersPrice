@@ -45,7 +45,7 @@ export default function Login() {
           <GoogleButton clientId={googleClientId} disabled={busy} onCredential={(c) => finish(() => loginGoogle(c))} />
         </>
       )}
-      <p className="muted" style={{ marginTop: 16 }}>
+      <p className="muted mt-3">
         No account? <Link to={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>
       </p>
     </div>

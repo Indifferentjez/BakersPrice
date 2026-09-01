@@ -53,14 +53,14 @@ export default function Defaults() {
       {d && (
         <form className="panel" onSubmit={save}>
           {d.needsHourlyRate && (
-            <div className="warnbox" style={{ marginBottom: 16 }}>
+            <div className="warnbox mb-3">
               No hourly rate set yet. Prices can’t be finalised until you enter one.
             </div>
           )}
 
           {GROUPS.map(([heading, fields]) => (
-            <section key={heading} style={{ marginBottom: 20 }}>
-              <h3 style={{ color: 'var(--muted)', fontSize: '.8rem', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 10 }}>{heading}</h3>
+            <section key={heading} className="section-block">
+              <h3 className="section-label">{heading}</h3>
               <div className="grid2">
                 {fields.map(([key, label, type, hint]) => (
                   <div key={key}>
@@ -79,7 +79,7 @@ export default function Defaults() {
             </section>
           ))}
 
-          <div className="row-actions" style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+          <div className="form-footer">
             <button type="submit" disabled={!user}>{user ? 'Save defaults' : 'Sign in to save'}</button>
             {saved && <span className="pill">Saved</span>}
           </div>

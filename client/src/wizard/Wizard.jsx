@@ -400,16 +400,16 @@ function UploadStep({ llm, rawInput, setRawInput, doParseText, doParseFile, star
       <div className="grid2">
         <div className="stack">
           <label>Paste the recipe (any format — grams, cups, mixed)</label>
-          <textarea value={rawInput} onChange={(e) => setRawInput(e.target.value)} placeholder={'2 cups plain flour\n200g caster sugar\n3 large eggs\n...'} style={{ minHeight: 220 }} />
+          <textarea className="recipe-paste" value={rawInput} onChange={(e) => setRawInput(e.target.value)} placeholder={'2 cups plain flour\n200g caster sugar\n3 large eggs\n...'} />
           <button disabled={!llm || busy || !rawInput.trim()} onClick={doParseText}>Parse pasted text</button>
         </div>
         <div className="stack">
           <label>…or upload a photo / PDF of the recipe card</label>
           <input type="file" accept="image/*,application/pdf" disabled={!llm || busy} onChange={(e) => doParseFile(e.target.files[0])} />
-          <p className="muted" style={{ fontSize: '.85rem' }}>
+          <p className="muted muted-sm">
             The image or PDF is sent to the Claude API for transcription. You confirm every row before anything is used.
           </p>
-          <hr style={{ border: 0, borderTop: '1px solid var(--line)' }} />
+          <hr className="hr-line" />
           <button className="ghost" onClick={startManual}>Enter manually instead</button>
         </div>
       </div>
@@ -421,7 +421,7 @@ function gramsApprox(g) { return g == null ? '' : (g >= 1000 ? `${(g / 1000).toF
 
 function MeasuredCell({ info }) {
   if (!info) return <span className="muted">…</span>;
-  if (info.grams == null) return <span style={{ color: 'var(--fail)' }}>{info.note || 'needs a weight'}</span>;
+  if (info.grams == null) return <span className="text-fail">{info.note || 'needs a weight'}</span>;
   const est = info.gramsRange
     ? `${Math.round(info.gramsRange.min)}–${Math.round(info.gramsRange.max)} g`
     : `~${gramsApprox(info.grams)}`;
@@ -469,25 +469,25 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
                   <td data-label="Ingredient"><input value={r.name} onChange={(e) => set(i, 'name', e.target.value)} /></td>
                   <td data-label="Qty"><input value={r.quantity} onChange={(e) => set(i, 'quantity', e.target.value)} /></td>
                   <td data-label="Unit"><input value={r.unit} onChange={(e) => set(i, 'unit', e.target.value)} placeholder="g / cup / each" /></td>
-                  <td data-label="Measured as" style={{ fontSize: '.85rem' }}><span><MeasuredCell info={info} /></span></td>
+                  <td data-label="Measured as" className="muted-sm"><span><MeasuredCell info={info} /></span></td>
                   <td data-label="Override wt (g)">
                     <input value={r.grams ?? ''} onChange={(e) => set(i, 'grams', e.target.value)}
                       placeholder={info?.grams != null ? 'optional' : 'enter g'} />
                   </td>
-                  <td data-label="" style={{ textAlign: 'right' }}><button className="subtle sm" aria-label="Remove row" onClick={() => del(i)}><IconClose size={14} /></button></td>
+                  <td data-label=""><button className="subtle sm" aria-label="Remove row" onClick={() => del(i)}><IconClose size={14} /></button></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
         </div>
-        <div className="row-actions" style={{ marginTop: 10 }}>
+        <div className="row-actions mt-2">
           <button className="ghost sm" onClick={add}><IconPlus size={14} /> Row</button>
           <button className="sm" onClick={recheck} disabled={busy}>Re-check weights</button>
           {resolved && (
-            <span className="muted" style={{ marginLeft: 'auto', fontSize: '.88rem' }}>
+            <span className="muted muted-sm ml-auto">
               Total master batter ≈ {Math.round(resolved.totalMasterGrams || 0)} g
-              {unresolvedCount > 0 && <> · <span style={{ color: 'var(--fail)' }}>{unresolvedCount} row(s) need a weight</span></>}
+              {unresolvedCount > 0 && <> · <span className="text-fail">{unresolvedCount} row(s) need a weight</span></>}
             </span>
           )}
         </div>
@@ -497,23 +497,23 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
         <div>
           <label>Recipe name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Nana’s lemon drizzle" />
-          <label style={{ marginTop: 10 }}>Allergen info (free text — shown to customers if you enter it)</label>
+          <label className="mt-2">Allergen info (free text — shown to customers if you enter it)</label>
           <textarea value={allergens} onChange={(e) => setAllergens(e.target.value)} placeholder="Contains: wheat, egg, milk. May contain nuts." />
         </div>
         <div>
           <label>Notes (baker-only)</label>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} style={{ minHeight: 120 }} />
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="notes-area" />
         </div>
       </div>
 
       {!user && (
         <AuthCta>Sign in to save this recipe to your account.</AuthCta>
       )}
-      <div className="panel actionbar-sticky" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="panel actionbar actionbar-sticky">
         {user ? (
           <>
-            <button onClick={saveRecipe} disabled={busy} className="ghost">{recipeId ? 'Update recipe' : 'Save recipe'}</button>
-            <button onClick={async () => { const r = await saveRecipe(); if (r) onNext(); }} disabled={busy || unresolvedCount > 0}>Save &amp; continue →</button>
+            <button onClick={saveRecipe} disabled={busy} className="ghost" aria-busy={busy}>{recipeId ? 'Update recipe' : 'Save recipe'}</button>
+            <button onClick={async () => { const r = await saveRecipe(); if (r) onNext(); }} disabled={busy || unresolvedCount > 0} aria-busy={busy}>Save &amp; continue →</button>
           </>
         ) : (
           <>
@@ -521,7 +521,7 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
             <button type="button" onClick={onNext} disabled={busy || unresolvedCount > 0}>Continue without saving →</button>
           </>
         )}
-        {unresolvedCount > 0 && <span className="muted" style={{ alignSelf: 'center' }}>Enter a weight for every flagged row first.</span>}
+        {unresolvedCount > 0 && <span className="muted">Enter a weight for every flagged row first.</span>}
       </div>
     </>
   );
@@ -534,11 +534,11 @@ function ClassifyStep({ classification, meta, typeOverride, onOverride, onNext }
       <div className="panel">
         <h2>Detected cake type</h2>
         <p>
-          <span className="pill" style={{ fontSize: '1rem' }}>{c.label}</span>{' '}
+          <span className="pill">{c.label}</span>{' '}
           <span className="muted">confidence {Math.round((c.confidence || 0) * 100)}%</span>
         </p>
         <p className="muted">{c.base?.note} Dry base ≈ {c.base?.grams} g.</p>
-        <div style={{ maxWidth: 460, margin: '14px 0' }}><RatioBars ratios={c.ratios} /></div>
+        <div className="ratio-wrap"><RatioBars ratios={c.ratios} /></div>
         <h3>Why</h3>
         <ul>{(c.reasons || []).map((r, i) => <li key={i}>{r}</li>)}</ul>
         {c.alternatives?.length > 0 && (
@@ -548,11 +548,13 @@ function ClassifyStep({ classification, meta, typeOverride, onOverride, onNext }
 
       <div className="panel">
         <label>Override the type (used for fill %, moisture loss and scaling tables)</label>
-        <select value={typeOverride} onChange={(e) => onOverride(e.target.value)} style={{ maxWidth: 320 }}>
+        <select className="narrow" value={typeOverride} onChange={(e) => onOverride(e.target.value)}>
           <option value="">Use detected — {c.label}</option>
           {meta.cakeTypes.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
         </select>
-        <div style={{ marginTop: 16 }}><button onClick={onNext}>Continue →</button></div>
+      </div>
+      <div className="panel actionbar actionbar-sticky">
+        <button onClick={onNext}>Continue →</button>
       </div>
     </>
   );
@@ -593,30 +595,30 @@ function PanStep({ meta, pan, setPan, useCalibration, setUseCalibration, calibra
             </div>
           ))}
         </div>
-        <label style={{ marginTop: 10 }}>
-          <input type="checkbox" style={{ width: 'auto', marginRight: 6 }} checked={pan.deep} onChange={(e) => sp('deep', e.target.checked)} />
+        <label className="check">
+          <input type="checkbox" checked={pan.deep} onChange={(e) => sp('deep', e.target.checked)} />
           Deep / bundt pan (forces 55–65% fill regardless of type)
         </label>
-        {pan.shape === 'loaf' && <p className="muted" style={{ fontSize: '.85rem' }}>If you only give length, width = 0.5 × length and depth = 0.3 × length are assumed (shown in the result).</p>}
+        {pan.shape === 'loaf' && <p className="muted muted-sm">If you only give length, width = 0.5 × length and depth = 0.3 × length are assumed (shown in the result).</p>}
       </div>
 
       <div className="panel">
         <h2>Batter density</h2>
         {defaultK
           ? (
-            <label>
-              <input type="checkbox" style={{ width: 'auto', marginRight: 6 }} checked={useCalibration} onChange={(e) => setUseCalibration(e.target.checked)} />
+            <label className="check">
+              <input type="checkbox" checked={useCalibration} onChange={(e) => setUseCalibration(e.target.checked)} />
               Use this recipe’s calibrated yield: <strong>{defaultK.toFixed(3)} g batter / mL</strong> (from a real bake). Uncheck to use the generic fill table.
             </label>
           )
           : <p className="muted">No calibration saved for this recipe yet — the generic fill-% table will be used. Add a real bake below to lock in the true yield.</p>}
-        <details style={{ marginTop: 10 }}>
+        <details className="mt-2">
           <summary>Calibrate from a real bake</summary>
           <Calibrator recipeId={recipeId} onSaved={(list) => setCalibrations(list)} />
         </details>
-        <details style={{ marginTop: 10 }}>
+        <details className="mt-2">
           <summary>Advanced: manual fill % override</summary>
-          <div style={{ marginTop: 8, maxWidth: 200 }}>
+          <div className="col-sm mt-2">
             <label>Fill % (single number)</label>
             <input type="number" value={fillOverride} onChange={(e) => setFillOverride(e.target.value)} placeholder="e.g. 70" />
           </div>
@@ -626,7 +628,7 @@ function PanStep({ meta, pan, setPan, useCalibration, setUseCalibration, calibra
       <div className="panel">
         <h2>This bake’s costs <span className="sub">labour / energy / packaging are flat per bake — never scaled by size</span></h2>
         {defaults?.needsHourlyRate && !bake.hourlyRate && (
-          <div className="warnbox" style={{ marginBottom: 12 }}>No hourly rate on file. Enter one here (save it on the Defaults page to reuse).</div>
+          <div className="warnbox mb-3">No hourly rate on file. Enter one here (save it on the Defaults page to reuse).</div>
         )}
         <div className="grid2">
           {[
@@ -644,10 +646,10 @@ function PanStep({ meta, pan, setPan, useCalibration, setUseCalibration, calibra
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 16 }}>
-          <button onClick={runCalc} disabled={busy || !panReady}>Calculate →</button>
-          {!panReady && <p className="muted" style={{ marginTop: 8 }}>Enter the required pan dimensions first.</p>}
-        </div>
+      </div>
+      <div className="panel actionbar actionbar-sticky">
+        <button onClick={runCalc} disabled={busy || !panReady} aria-busy={busy}>Calculate →</button>
+        {!panReady && <span className="muted">Enter the required pan dimensions first.</span>}
       </div>
     </>
   );
@@ -681,7 +683,7 @@ function Calibrator({ recipeId, onSaved }) {
   };
 
   return (
-    <div className="stack" style={{ marginTop: 10 }}>
+    <div className="stack mt-2">
       <Err error={err} />
       {pans.map((p, i) => (
         <div className="row" key={i}>
@@ -696,11 +698,11 @@ function Calibrator({ recipeId, onSaved }) {
       <div>
         <button className="ghost sm" onClick={() => setPans([...pans, { shape: 'round', unit: 'in', diameter: '', depth: '' }])}>+ another tin</button>
       </div>
-      <div style={{ maxWidth: 240 }}>
+      <div className="col-sm">
         <label>Total batter weight actually made (g)</label>
         <input type="number" value={batter} onChange={(e) => setBatter(e.target.value)} />
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div className="row-actions">
         <button className="sm" onClick={doPreview}>Preview yield</button>
         <button className="sm" onClick={save} disabled={!recipeId}>Save as this recipe’s default</button>
       </div>
@@ -724,9 +726,9 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
 
   return (
     <div className="panel">
-      <h3>Ingredient prices <span className="muted" style={{ fontWeight: 400 }}>— from the master catalogue; override for this recipe only</span></h3>
+      <h3>Ingredient prices <span className="muted fw-normal">— from the master catalogue; override for this recipe only</span></h3>
       <div className="table-wrap">
-      <table>
+      <table className="table-stack">
         <thead><tr><th>Ingredient</th><th>Amount</th><th>Source</th><th>Unit £</th><th>Line £</th><th>Override for this recipe</th></tr></thead>
         <tbody>
           {lines.map((l) => {
@@ -734,24 +736,24 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
             const ov = key ? draft[key] : null;
             return (
               <tr key={l.name} className={l.basis === 'missing' ? 'flagged' : ''}>
-                <td>{l.name}{key ? '' : <span className="muted"> · not in catalogue</span>}</td>
-                <td className="muted">{l.count != null ? `${l.count}×` : `${Math.round(l.grams)} g`}</td>
-                <td>{l.basis === 'override' ? <span className="pill">recipe override</span>
+                <td data-label="Ingredient">{l.name}{key ? '' : <span className="muted"> · not in catalogue</span>}</td>
+                <td data-label="Amount" className="muted">{l.count != null ? `${l.count}×` : `${Math.round(l.grams)} g`}</td>
+                <td data-label="Source">{l.basis === 'override' ? <span className="pill">recipe override</span>
                   : l.basis === 'master' ? <span className="muted">master</span>
-                  : <span style={{ color: 'var(--fail)' }}>no price</span>}</td>
-                <td className="muted">{l.unitPrice != null ? `£${l.unitPrice.toFixed(l.unit === '/each' ? 3 : 5)}${l.unit}` : '—'}</td>
-                <td>{l.cost != null ? <Money amount={l.cost} currency={cur} /> : '—'}</td>
-                <td style={{ whiteSpace: 'nowrap' }}>
+                  : <span className="text-fail">no price</span>}</td>
+                <td data-label="Unit £" className="muted">{l.unitPrice != null ? `£${l.unitPrice.toFixed(l.unit === '/each' ? 3 : 5)}${l.unit}` : '—'}</td>
+                <td data-label="Line £">{l.cost != null ? <Money amount={l.cost} currency={cur} /> : '—'}</td>
+                <td data-label="Override">
                   {key ? (
-                    <>
-                      <input style={{ width: 70, padding: '3px 6px' }} type="number" step="0.01" placeholder="£"
+                    <div className="compact-price">
+                      <input type="number" step="0.01" placeholder="£"
                         value={ov?.price ?? ''} onChange={(e) => setOv(key, { price: e.target.value })} />
-                      <select style={{ width: 74, padding: '3px 4px', marginLeft: 4 }}
+                      <select
                         value={ov?.priceUnit ?? 'kg'} onChange={(e) => setOv(key, { priceUnit: e.target.value })}>
                         {['kg', 'litre', 'each', 'g', 'ml'].map((u) => <option key={u}>{u}</option>)}
                       </select>
-                      {ov && <button className="subtle sm" aria-label="Clear override" style={{ marginLeft: 4 }} onClick={() => clearOv(key)}><IconClose size={14} /></button>}
-                    </>
+                      {ov && <button className="subtle sm" aria-label="Clear override" onClick={() => clearOv(key)}><IconClose size={14} /></button>}
+                    </div>
                   ) : <span className="muted">add it under Ingredients</span>}
                 </td>
               </tr>
@@ -760,7 +762,7 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
         </tbody>
       </table>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="row-actions mt-2">
         <button className="sm" disabled={busy || !dirty} onClick={() => recalcWithOverrides(cleanOverrides(draft))}>Apply overrides &amp; re-price</button>
         <button className="ghost sm" disabled={busy} onClick={async () => { await saveOverridesToRecipe(cleanOverrides(draft)); setPushMsg('Saved to recipe.'); }}>Save overrides to this recipe</button>
         <button className="subtle sm" disabled={busy || !Object.keys(draft).length}
@@ -810,7 +812,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
       <div className="panel">
         <h2>Calculated size &amp; weight <span className="sub">baker-only view — every figure is labelled</span></h2>
         <div className="table-wrap">
-        <table>
+        <table className="kv-table">
           <tbody>
             <tr><td>Cake type used</td><td>{cakeTypeKey}</td><td><Badge accuracy={typeof calc.classification?.confidence === 'number' && calc.classification.detected !== 'unclassified' ? 'ESTIMATED' : 'REQUIRES_TESTING'} /></td></tr>
             <tr><td>Pan volume</td><td>{c.pan.volumeMl} mL {c.pan.assumptions.length > 0 && <span className="muted">({c.pan.assumptions.join('; ')})</span>}</td><td><Badge accuracy={c.pan.assumptions.length ? 'ESTIMATED' : 'CALCULATED'} /></td></tr>
@@ -824,8 +826,8 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
         </table>
         </div>
         {(c.countAdvice || []).map((a, i) => (
-          <div key={i} className={a.warnRounding ? 'warnbox' : 'okbox'} style={{ marginTop: 12 }}>
-            <strong style={{ textTransform: 'capitalize' }}>{a.noun}s:</strong> {a.guidance} {a.note || ''}
+          <div key={i} className={a.warnRounding ? 'warnbox mt-3' : 'okbox mt-3'}>
+            <strong className="capitalize">{a.noun}s:</strong> {a.guidance} {a.note || ''}
           </div>
         ))}
       </div>
@@ -833,18 +835,18 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
       <div className="panel">
         <h3>Scaled ingredient list (target size)</h3>
         <div className="table-wrap">
-        <table>
+        <table className="table-stack">
           <thead><tr><th>Ingredient</th><th>Master recipe</th><th>Scaled</th></tr></thead>
           <tbody>
             {c.scaledIngredients.map((r, i) => (
               <tr key={i}>
-                <td>{r.name}</td>
-                <td className="muted">
+                <td data-label="Ingredient">{r.name}</td>
+                <td data-label="Master recipe" className="muted">
                   {r.measurementType === 'count' && r.masterCount != null
                     ? `${r.masterCount} ${r.countNoun || 'x'}${r.masterCount === 1 ? '' : 's'}`
                     : `${r.masterGrams} g`}
                 </td>
-                <td>
+                <td data-label="Scaled">
                   {r.measurementType === 'count' && r.count != null
                     ? <><strong>{r.count} {r.countNoun || 'x'}{r.count === 1 ? '' : 's'}</strong>
                         {r.gramsRange && <span className="muted"> (~{Math.round(r.gramsRange.min)}–{Math.round(r.gramsRange.max)} g)</span>}</>
@@ -855,16 +857,16 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
           </tbody>
         </table>
         </div>
-        <p className="muted" style={{ fontSize: '.82rem' }}>Weight rows scale by the mid factor; count rows scale to a whole number and show the estimated weight range. <Badge accuracy="CALCULATED" /></p>
+        <p className="muted muted-sm">Weight rows scale by the mid factor; count rows scale to a whole number and show the estimated weight range. <Badge accuracy="CALCULATED" /></p>
       </div>
 
       <IngredientPricePanel {...{ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }} />
 
       <div className="panel">
-        <h3>Cost &amp; price <span className="muted" style={{ fontWeight: 400 }}>— baker-only, never shown to customers</span></h3>
+        <h3>Cost &amp; price <span className="muted fw-normal">— baker-only, never shown to customers</span></h3>
         <EstimateBanner price={price} cur={cur} />
         <div className="table-wrap">
-        <table>
+        <table className="kv-table">
           <tbody>
             <tr>
               <td>Ingredient cost (scales with size)</td>
@@ -902,14 +904,14 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
           </tbody>
         </table>
         </div>
-        <div className="tierbtns" style={{ marginTop: 14 }}>
+        <div className="tierbtns mt-3">
           {['minimum', 'standard', 'premium'].map((t) => {
             const est = price.estimate?.isEstimate;
             const floor = price.pricesFloor ? price.pricesFloor[t] : price.prices[t];
             const lead = price.prices[t];
             return (
               <div className="tier" key={t}>
-                <div style={{ textTransform: 'capitalize' }}>{t} <span className="muted">({price.margins[t]}%)</span></div>
+                <div className="capitalize">{t} <span className="muted">({price.margins[t]}%)</span></div>
                 {est && price.pricesEstimated
                   ? (
                     <>
@@ -927,13 +929,13 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
       <div className="panel">
         <h3>Self-audit</h3>
         <Checks audit={audit} />
-        <p style={{ marginTop: 8 }}>Overall: <Badge accuracy={audit.overallAccuracy} /></p>
+        <p className="mt-2">Overall: <Badge accuracy={audit.overallAccuracy} /></p>
       </div>
 
-      <div className="panel actionbar-sticky" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="panel actionbar actionbar-sticky">
         <button className="ghost" onClick={onBack}>← Change pan / cost</button>
         <button className="subtle" onClick={addToMenu}>Add this size to a price-list menu</button>
-        <button onClick={onQuote} style={{ marginLeft: 'auto' }}>Build customer quote →</button>
+        <button className="ml-auto" onClick={onQuote}>Build customer quote →</button>
         {menuItems.length > 0 && <span className="pill">{menuItems.length} in menu</span>}
       </div>
     </>
@@ -987,17 +989,18 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
         <div className="okbox">
           Customer page: <a href={`/q/${quote.id}`} target="_blank" rel="noreferrer">{location.origin}/q/{quote.id}</a>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <a href={`/q/${quote.id}`} target="_blank" rel="noreferrer"><button className="ghost">Open customer page</button></a>
-          <a href={`/api/quotes/${quote.id}/pdf`} target="_blank" rel="noreferrer"><button className="ghost">Download PDF</button></a>
-          <button onClick={onDone} style={{ marginLeft: 'auto' }}>Done</button>
+        <div className="actionbar">
+          <a className="btn ghost" href={`/q/${quote.id}`} target="_blank" rel="noreferrer">Open customer page</a>
+          <a className="btn ghost" href={`/api/quotes/${quote.id}/pdf`} target="_blank" rel="noreferrer">Download PDF</a>
+          <button className="ml-auto" onClick={onDone}>Done</button>
         </div>
-        <p className="muted" style={{ fontSize: '.85rem' }}>The customer page and PDF contain no cost, margin, or internal maths — only what you see on this card.</p>
+        <p className="muted muted-sm">The customer page and PDF contain no cost, margin, or internal maths — only what you see on this card.</p>
       </div>
     );
   }
 
   return (
+    <>
     <div className="panel stack">
       <h2>Build the customer quote</h2>
       <Err error={err} />
@@ -1015,7 +1018,7 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
           <div className="tierbtns">
             {['minimum', 'standard', 'premium'].map((t) => (
               <div key={t} className={`tier ${tier === t ? 'sel' : ''}`} onClick={() => setTier(t)}>
-                <div style={{ textTransform: 'capitalize' }}>{t}</div>
+                <div className="capitalize">{t}</div>
                 <div className="amt"><Money amount={price.prices[t]} currency={price.currency} /></div>
                 {price.estimate?.isEstimate && price.pricesFloor && (
                   <small>est. · floor <Money amount={price.pricesFloor[t]} currency={price.currency} /></small>
@@ -1024,7 +1027,7 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
             ))}
           </div>
           {price.estimate?.isEstimate && (
-            <div className="warnbox" style={{ marginTop: 8 }}>
+            <div className="warnbox mt-2">
               Saved as an <strong>estimate</strong> ({price.estimate.unpricedWeightPct}% of ingredients unpriced). The
               customer page/PDF will show the estimated price with a plain
               “estimate — final price confirmed on order” note. No cost breakdown is shown to the customer.
@@ -1037,14 +1040,14 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
         <div>
           {menuItems.length === 0 && <div className="warnbox">Go back to a Breakdown screen and “Add this size to a price-list menu” for each size you want to offer.</div>}
           {menuItems.map((m, i) => (
-            <div className="row" key={i} style={{ alignItems: 'flex-end' }}>
-              <div style={{ flex: 3 }}><label>Size label</label>
+            <div className="row end" key={i}>
+              <div className="grow"><label>Size label</label>
                 <input value={m.sizeLabel} onChange={(e) => setMenuItems(menuItems.map((x, j) => (j === i ? { ...x, sizeLabel: e.target.value } : x)))} /></div>
               <div><label>Tier</label>
                 <select value={m.tier} onChange={(e) => setMenuItems(menuItems.map((x, j) => (j === i ? { ...x, tier: e.target.value } : x)))}>
                   <option>minimum</option><option>standard</option><option>premium</option>
                 </select></div>
-              <div style={{ flex: '0 0 auto' }}><button className="subtle sm" onClick={() => setMenuItems(menuItems.filter((_, j) => j !== i))}>Remove</button></div>
+              <div className="shrink"><button className="subtle sm" onClick={() => setMenuItems(menuItems.filter((_, j) => j !== i))}>Remove</button></div>
             </div>
           ))}
         </div>
@@ -1060,11 +1063,12 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
         <div><label>Note / personalisation</label><textarea value={form.note} onChange={(e) => sf('note', e.target.value)} placeholder="“Happy Birthday” piping included." /></div>
       </div>
 
-      <div>
-        <button onClick={submit} disabled={busy || !user || !calc.calculationId || (mode === 'menu' && menuItems.length === 0)}>
+      </div>
+      <div className="panel actionbar actionbar-sticky">
+        <button onClick={submit} disabled={busy || !user || !calc.calculationId || (mode === 'menu' && menuItems.length === 0)} aria-busy={busy}>
           {user ? `Generate ${mode === 'menu' ? 'price list' : 'quote'}` : 'Sign in to save a quote'}
         </button>
       </div>
-    </div>
+    </>
   );
 }
