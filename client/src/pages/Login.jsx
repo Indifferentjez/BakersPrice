@@ -25,8 +25,8 @@ export default function Login() {
 
   return (
     <div className="panel auth-panel">
-      <h2>Log in</h2>
-      <p className="muted">Sign in to save recipes, quotes, and your cost defaults.</p>
+      <h1>Log in</h1>
+      <p className="muted">Save this work to your account — recipes, quotes, and cost defaults.</p>
       <Err error={error} />
       <form className="stack" onSubmit={(e) => { e.preventDefault(); finish(() => login(email, password)); }}>
         <div>
@@ -41,11 +41,11 @@ export default function Login() {
       </form>
       {googleClientId && (
         <>
-          <p className="muted" style={{ textAlign: 'center', margin: '16px 0 8px' }}>or</p>
+          <div className="auth-divider">or</div>
           <GoogleButton clientId={googleClientId} disabled={busy} onCredential={(c) => finish(() => loginGoogle(c))} />
         </>
       )}
-      <p className="muted" style={{ marginTop: 16 }}>
+      <p className="muted mt-3">
         No account? <Link to={`/signup?next=${encodeURIComponent(next)}`}>Create one</Link>
       </p>
     </div>
