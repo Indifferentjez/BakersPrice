@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api, isUnauthenticated } from '../api.js';
 import { AuthCta, loginPath, useAuth } from '../auth.jsx';
 import { Badge, Range, Money, RatioBars, Checks, Err, EstimateBanner } from '../components.jsx';
+import { IconClose, IconPlus } from '../icons.jsx';
 
 const STEPS = [
   ['upload', 'Recipe'],
@@ -291,6 +292,8 @@ export default function Wizard() {
 
   const value = { step, stepIndex };
 
+  const currentStepLabel = STEPS[stepIndex] ? `${stepIndex + 1}. ${STEPS[stepIndex][1]}` : '';
+
   return (
     <>
       <div className="steps">
@@ -304,8 +307,9 @@ export default function Wizard() {
           </button>
         ))}
       </div>
+      <div className="step-current">{currentStepLabel}</div>
       <Err error={error} />
-      {busy && <div className="panel muted">Working…</div>}
+      {busy && <div className="progressbar" role="status" aria-label="Working" />}
 
       {step === 'upload' && (
         <UploadStep {...{ llm, rawInput, setRawInput, doParseText, doParseFile, startManual, busy }} />
@@ -470,15 +474,15 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
                     <input value={r.grams ?? ''} onChange={(e) => set(i, 'grams', e.target.value)}
                       placeholder={info?.grams != null ? 'optional' : 'enter g'} />
                   </td>
-                  <td data-label="" style={{ textAlign: 'right' }}><button className="subtle sm" onClick={() => del(i)}>✕</button></td>
+                  <td data-label="" style={{ textAlign: 'right' }}><button className="subtle sm" aria-label="Remove row" onClick={() => del(i)}><IconClose size={14} /></button></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
         </div>
-        <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="ghost sm" onClick={add}>+ Row</button>
+        <div className="row-actions" style={{ marginTop: 10 }}>
+          <button className="ghost sm" onClick={add}><IconPlus size={14} /> Row</button>
           <button className="sm" onClick={recheck} disabled={busy}>Re-check weights</button>
           {resolved && (
             <span className="muted" style={{ marginLeft: 'auto', fontSize: '.88rem' }}>
@@ -505,7 +509,7 @@ function ConfirmStep({ rows, setRows, resolved, recheck, name, setName, allergen
       {!user && (
         <AuthCta>Sign in to save this recipe to your account.</AuthCta>
       )}
-      <div className="panel" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div className="panel actionbar-sticky" style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         {user ? (
           <>
             <button onClick={saveRecipe} disabled={busy} className="ghost">{recipeId ? 'Update recipe' : 'Save recipe'}</button>
@@ -746,7 +750,7 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
                         value={ov?.priceUnit ?? 'kg'} onChange={(e) => setOv(key, { priceUnit: e.target.value })}>
                         {['kg', 'litre', 'each', 'g', 'ml'].map((u) => <option key={u}>{u}</option>)}
                       </select>
-                      {ov && <button className="subtle sm" style={{ marginLeft: 4 }} onClick={() => clearOv(key)}>✕</button>}
+                      {ov && <button className="subtle sm" aria-label="Clear override" style={{ marginLeft: 4 }} onClick={() => clearOv(key)}><IconClose size={14} /></button>}
                     </>
                   ) : <span className="muted">add it under Ingredients</span>}
                 </td>
@@ -926,7 +930,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
         <p style={{ marginTop: 8 }}>Overall: <Badge accuracy={audit.overallAccuracy} /></p>
       </div>
 
-      <div className="panel" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+      <div className="panel actionbar-sticky" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button className="ghost" onClick={onBack}>← Change pan / cost</button>
         <button className="subtle" onClick={addToMenu}>Add this size to a price-list menu</button>
         <button onClick={onQuote} style={{ marginLeft: 'auto' }}>Build customer quote →</button>

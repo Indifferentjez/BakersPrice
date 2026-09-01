@@ -64,11 +64,11 @@ export function loginPath(next) {
 export function AuthCta({ children }) {
   const loc = useLocation();
   return (
-    <div className="warnbox" style={{ marginBottom: 12 }}>
+    <div className="infobox" style={{ marginBottom: 12 }}>
       <div>{children}</div>
-      <div style={{ marginTop: 8 }}>
+      <div className="row-actions" style={{ marginTop: 8 }}>
         <Link to={loginPath(loc.pathname)}>Log in</Link>
-        {' · '}
+        <span className="muted">·</span>
         <Link to={`/signup?next=${encodeURIComponent(loc.pathname)}`}>Create an account</Link>
       </div>
     </div>

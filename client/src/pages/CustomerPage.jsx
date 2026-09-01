@@ -15,8 +15,25 @@ export default function CustomerPage() {
       .catch(setErr);
   }, [id]);
 
-  if (err) return <div className="customer">Sorry — this quote link is not valid.</div>;
-  if (!dto) return <div className="customer">Loading…</div>;
+  if (err) {
+    return (
+      <div className="customer">
+        <div className="biz">Quote unavailable</div>
+        <p className="muted">This link is no longer valid. Please ask for an up-to-date quote link.</p>
+      </div>
+    );
+  }
+  if (!dto) {
+    return (
+      <div className="customer">
+        <div className="skeleton" style={{ height: 28, width: '55%', marginBottom: 12 }} />
+        <div className="skeleton" style={{ height: 16, width: '35%', marginBottom: 28 }} />
+        <div className="skeleton" style={{ height: 20, width: '70%', marginBottom: 10 }} />
+        <div className="skeleton" style={{ height: 16, width: '90%', marginBottom: 24 }} />
+        <div className="skeleton" style={{ height: 40, width: '100%' }} />
+      </div>
+    );
+  }
 
   return (
     <>

@@ -35,7 +35,7 @@ export default function Signup() {
 
   return (
     <div className="panel auth-panel">
-      <h2>Create an account</h2>
+      <h1>Create an account</h1>
       <p className="muted">Recipes and quotes you save stay on this account.</p>
       <Err error={error} />
       <form className="stack" onSubmit={onSubmit}>
@@ -56,7 +56,7 @@ export default function Signup() {
       </form>
       {googleClientId && (
         <>
-          <p className="muted" style={{ textAlign: 'center', margin: '16px 0 8px' }}>or</p>
+          <div className="auth-divider">or</div>
           <GoogleButton clientId={googleClientId} disabled={busy} onCredential={(c) => finish(() => loginGoogle(c))} />
         </>
       )}

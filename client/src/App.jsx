@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth.jsx';
+import { IconMenu, IconClose } from './icons.jsx';
 import RecipeList from './pages/RecipeList.jsx';
 import MasterIngredients from './pages/MasterIngredients.jsx';
 import Defaults from './pages/Defaults.jsx';
@@ -15,14 +16,20 @@ function Shell({ children }) {
   const loc = useLocation();
   const nav = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const topbarRef = useRef(null);
 
-  // Close the mobile menu on navigation and on Escape.
+  // Close the mobile menu on navigation, on Escape, and on an outside tap.
   useEffect(() => { setMenuOpen(false); }, [loc.pathname]);
   useEffect(() => {
     if (!menuOpen) return undefined;
     const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    const onDown = (e) => { if (topbarRef.current && !topbarRef.current.contains(e.target)) setMenuOpen(false); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown);
+    };
   }, [menuOpen]);
 
   const onLogout = async () => {
@@ -32,7 +39,7 @@ function Shell({ children }) {
 
   return (
     <div className="app">
-      <div className="topbar">
+      <div className="topbar" ref={topbarRef}>
         <div className="brand">Bakers<span>Price</span></div>
         <button
           type="button"
@@ -42,7 +49,7 @@ function Shell({ children }) {
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           onClick={() => setMenuOpen((o) => !o)}
         >
-          {menuOpen ? '✕' : '☰'}
+          {menuOpen ? <IconClose size={22} /> : <IconMenu size={22} />}
         </button>
         <div className={`site-nav${menuOpen ? ' open' : ''}`} id="site-nav">
           <nav className="nav">
