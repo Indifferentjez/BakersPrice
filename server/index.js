@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,7 @@ import defaultsRoutes from './routes/defaults.js';
 import calibrationRoutes from './routes/calibrations.js';
 import calcRoutes from './routes/calc.js';
 import quoteRoutes from './routes/quotes.js';
+import billingRoutes, { webhookHandler } from './routes/billing.js';
 import { llmAvailable } from './anthropic.js';
 
 bootstrapIngredients(); // seed master_ingredients + migrate legacy prices on first run
@@ -37,8 +39,16 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 // client (rate limiting) and Secure-cookie detection works.
 app.set('trust proxy', 1);
 
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  frameguard: { action: 'deny' },
+}));
 app.use(cors({ origin: CLIENT_ORIGIN, credentials: true }));
 app.use(cookieParser(process.env.SESSION_SECRET || undefined));
+// Stripe's signature check needs the exact raw body, so this is mounted before
+// the global JSON parser below.
+app.post('/api/billing/webhook', express.raw({ type: 'application/json' }), webhookHandler);
 app.use(express.json({ limit: '5mb' }));
 app.use(attachUser);
 
@@ -52,6 +62,7 @@ app.use('/api/defaults', defaultsRoutes);
 app.use('/api/calibrations', calibrationRoutes);
 app.use('/api/calc', calcRoutes);
 app.use('/api/quotes', quoteRoutes);
+app.use('/api/billing', billingRoutes);
 
 // Serve the built client in production; in dev the Vite server proxies here.
 const clientDist = path.join(__dirname, '..', 'client', 'dist');

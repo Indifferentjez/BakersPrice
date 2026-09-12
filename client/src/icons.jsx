@@ -88,3 +88,23 @@ export function IconSearch(props) {
     </Icon>
   );
 }
+
+export function IconEye(props) {
+  return (
+    <Icon {...props}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </Icon>
+  );
+}
+
+export function IconEyeOff(props) {
+  return (
+    <Icon {...props}>
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 3-3 3 3 0 0 0-.4-1.5" />
+      <path d="M6.7 6.8C4.2 8.3 2.5 10.5 2 12c0 0 3.5 7 10 7 1.8 0 3.4-.4 4.8-1.1" />
+      <path d="M17.3 17.2C19.8 15.7 21.5 13.5 22 12c0 0-3.5-7-10-7-1.1 0-2.1.2-3.1.5" />
+    </Icon>
+  );
+}

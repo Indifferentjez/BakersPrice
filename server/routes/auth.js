@@ -5,7 +5,11 @@ import {
   createUser, findUserByEmail, findUserByGoogleSub, linkGoogleSub,
   verifyPassword, createSession, destroySession, publicUser, normalizeEmail,
   MAX_PASSWORD_LEN, DUMMY_HASH,
+  createPasswordResetToken, consumePasswordResetToken, setUserPassword, findUserById,
 } from '../lib/auth.js';
+import { getUsageInfo } from '../lib/billing.js';
+import { sendPasswordResetEmail } from '../lib/mailer.js';
+import { stripeAvailable } from '../lib/stripeClient.js';
 
 const router = Router();
 
@@ -19,7 +23,7 @@ const authLimiter = rateLimit({
   skip: () => process.env.VITEST === 'true',
   message: { error: 'Too many attempts. Wait a few minutes and try again.' },
 });
-router.use(['/login', '/signup', '/google'], authLimiter);
+router.use(['/login', '/signup', '/google', '/forgot'], authLimiter);
 
 function googleClient() {
   const id = process.env.GOOGLE_CLIENT_ID;
@@ -27,11 +31,19 @@ function googleClient() {
 }
 
 router.get('/config', (_req, res) => {
-  res.json({ googleClientId: process.env.GOOGLE_CLIENT_ID || null });
+  res.json({
+    googleClientId: process.env.GOOGLE_CLIENT_ID || null,
+    ephemeralStorage: Boolean(process.env.RENDER) && !process.env.DB_PATH,
+    billingConfigured: stripeAvailable(),
+  });
 });
 
 router.get('/me', (req, res) => {
-  res.json({ user: req.user || null });
+  if (!req.user) {
+    return res.json({ user: null, plan: null, isAdmin: false, limits: null, usage: null });
+  }
+  const { limits, usage } = getUsageInfo(req.user.id, req.user.plan);
+  res.json({ user: req.user, plan: req.user.plan, isAdmin: req.user.isAdmin, limits, usage });
 });
 
 router.post('/signup', (req, res) => {
@@ -123,6 +135,40 @@ router.post('/google', async (req, res) => {
   }
   createSession(user.id, res);
   res.json({ user: publicUser(user) });
+});
+
+router.post('/forgot', async (req, res) => {
+  const email = normalizeEmail(req.body?.email);
+  if (email) {
+    const user = findUserByEmail(email);
+    if (user) {
+      const token = createPasswordResetToken(user.id);
+      const resetUrl = `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/reset?token=${token}`;
+      try {
+        await sendPasswordResetEmail({ to: user.email, resetUrl });
+      } catch (e) {
+        // Delivery failure never changes the response — /forgot is always 200
+        // so it can't be used to enumerate accounts.
+        console.error('sendPasswordResetEmail failed:', e.message);
+      }
+    }
+  }
+  res.json({ ok: true });
+});
+
+router.post('/reset', (req, res) => {
+  const token = String(req.body?.token || '');
+  const password = String(req.body?.password || '');
+  if (password.length < 8 || password.length > MAX_PASSWORD_LEN) {
+    return res.status(400).json({ error: `Password must be 8 to ${MAX_PASSWORD_LEN} characters.` });
+  }
+  const userId = consumePasswordResetToken(token);
+  if (!userId) {
+    return res.status(400).json({ error: 'This reset link is invalid or has expired.' });
+  }
+  setUserPassword(userId, password);
+  createSession(userId, res);
+  res.json({ user: publicUser(findUserById(userId)) });
 });
 
 export default router;

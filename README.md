@@ -5,13 +5,17 @@ ratios → scale to any pan → cost it (ingredients + labour + energy + packagi
 overhead + margin) → generate a clean customer quote that **never** shows cost or
 margin.
 
-Single baker, **sign-in required to save**. React + Vite client, Express + SQLite
-server with session cookies. You can walk through the wizard and preview a
-calculation without an account. Signing in (email/password or optional Google)
-is required to: save recipes / quotes / calibrations / cost defaults, edit
-ingredient prices, and use LLM recipe parsing (photo / PDF / paste — it spends
-API credits, so it's gated and rate-limited). Manual ingredient entry needs no
-key. Customer quote pages `/q/:id` stay public.
+Sign-in required to save. React + Vite client, Express + SQLite server with
+session cookies. You can walk through the wizard and preview a calculation
+without an account. Signing in (email/password or optional Google) is required
+to: save recipes / quotes / calibrations / cost defaults, and use LLM recipe
+parsing (photo / PDF / paste — it spends API credits, so it's gated,
+rate-limited, and Pro-only — see "Plans, billing, and admin" below). Editing the
+shared ingredient catalogue additionally requires the `ADMIN_EMAIL` account —
+everyone else, signed in or not, can only read it. Manual ingredient entry
+needs no key. Customer quote pages `/q/:id` stay public.
+
+Plain-language product guide (for people and AIs): **[HOW-IT-WORKS.md](HOW-IT-WORKS.md)**.
 
 ## Run it
 
@@ -37,10 +41,49 @@ Auth env (also in `.env.example`):
 - `CLIENT_ORIGIN` — default `http://localhost:5173` (Vite). Same-origin production
   deploys do not need a separate API origin.
 
+### Plans, billing, and admin
+
+Every account is on the **Free** plan (3 recipes, 3 quotes, no AI parsing) unless
+upgraded to **Pro** (£12/mo — unlimited recipes/quotes, 40 AI parses/month). All
+of the following are optional — leave them unset and the app runs exactly as
+before, just with billing/admin/reset features showing a clear "not configured"
+state instead of failing.
+
+- `ADMIN_EMAIL` — the one signed-in email (case-insensitive) allowed to
+  add/edit/delete ingredient prices or bulk-import them on **/ingredients**.
+  Everyone can still *read* the catalogue. **Leave this unset and no one — not
+  even a signed-in baker — can write to the shared catalogue**, since there's no
+  email to match against.
+- `RESEND_API_KEY` / `MAIL_FROM` — used by **/forgot** to email a password reset
+  link via [Resend](https://resend.com). Without both set, `/forgot` still
+  returns success (so it can never be used to check which emails have
+  accounts), but only *logs* the reset link to the server console, and only
+  when `NODE_ENV` isn't `production`. **In production with no Resend key, reset
+  emails are never sent** — set these two before you rely on password reset for
+  real users.
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY` — Stripe
+  Checkout + Billing Portal + webhook for the Pro subscription. Leave any of
+  them unset and `/pricing`'s Subscribe button shows "Billing not configured"
+  instead of erroring. The webhook (`POST /api/billing/webhook`) needs to be
+  registered in the Stripe dashboard pointing at your deployed URL, subscribed
+  to `checkout.session.completed`, `customer.subscription.updated`,
+  `customer.subscription.deleted`, and `invoice.payment_failed`.
+
 ```bash
 npm test         # engine unit + regression suite (includes auth ownership)
 npm run build && npm start   # production: server serves the built client on $PORT (default 3001)
+npm run backup   # copies the live SQLite DB into server/data/backups/ — see caveat below
 ```
+
+**`npm run backup` is not the same as persistence.** It makes an online-safe
+copy of `DB_PATH` (or `server/data/app.db`) using better-sqlite3's own backup
+API (safe under WAL, unlike a plain file copy) into `server/data/backups/`. On
+Render's free tier that backup file lives on the *same* ephemeral filesystem as
+the database it copied — it gets wiped on the next sleep/redeploy right along
+with everything else. It's genuinely useful (a) on your own machine, or (b)
+once the service is on `plan: starter` with the `disk:` block uncommented —
+run it against that mounted disk and copy the result off-box yourself
+afterwards; the script does not upload anywhere on its own.
 
 ## Deploy (Render)
 
@@ -49,10 +92,14 @@ pick this repo → **Apply**. First deploy takes ~3–5 min and gives you a
 `*.onrender.com` URL.
 
 - **Free tier, so:** the service sleeps after ~15 min idle and its disk is wiped
-  on every sleep/redeploy — the SQLite DB does **not** persist (start command
-  re-seeds the sample recipe so the first signup can claim it). For real
-  persistence, switch `plan: free` → `plan: starter` in `render.yaml` and
-  uncomment the `disk:` + `DB_PATH` blocks.
+  on every sleep/redeploy — the SQLite DB does **not** persist (accounts,
+  recipes, quotes, catalogue prices, and any Stripe subscription link are all
+  lost). The start command is just `npm start` — it does **not** run
+  `npm run seed` on boot, so a fresh deploy starts completely empty rather than
+  with the sample recipe. For real persistence, switch `plan: free` →
+  `plan: starter` in `render.yaml` and uncomment the `disk:` + `DB_PATH` blocks
+  (see "Plans, billing, and admin" above for why `npm run backup` alone doesn't
+  fix this).
 - **Auth:** email/password (and optional Google) session cookies. Set
   `SESSION_SECRET` (the blueprint generates one). Set `GOOGLE_CLIENT_ID` if you
   want the Google button; add your `*.onrender.com` origin in Google Cloud
@@ -61,7 +108,8 @@ pick this repo → **Apply**. First deploy takes ~3–5 min and gives you a
   spend cap.
 - Runtime config: `PORT` (Render sets it), `DB_PATH`, `SESSION_SECRET`,
   `GOOGLE_CLIENT_ID`, `CLIENT_ORIGIN`, `ANTHROPIC_API_KEY`,
-  `ANTHROPIC_MODEL` (blueprint defaults to `claude-sonnet-5`).
+  `ANTHROPIC_MODEL` (blueprint defaults to `claude-sonnet-5`), plus the optional
+  `ADMIN_EMAIL` / `RESEND_API_KEY` / `MAIL_FROM` / `STRIPE_*` vars above.
 
 Any Node host with a persistent disk works the same way — build `npm install
 --include=dev && npm run build`, start `npm start`, point `DB_PATH` at the disk.

@@ -7,6 +7,7 @@ import {
 } from '../anthropic.js';
 import { resolveRecipe } from '../lib/recipe.js';
 import { requireUser } from '../lib/auth.js';
+import { canUseParse, recordParseUsage } from '../lib/billing.js';
 
 const upload = multer({ limits: { fileSize: 25 * 1024 * 1024 } });
 const router = Router();
@@ -45,6 +46,8 @@ router.get('/status', (_req, res) => {
 // POST /api/parse            body: { text }
 // POST /api/parse  multipart: file=<image|pdf>
 router.post('/', requireUser, parseLimiter, upload.single('file'), async (req, res, next) => {
+  const gate = canUseParse(req.user.id, req.user.plan);
+  if (!gate.ok) return res.status(402).json({ error: gate.reason, code: 'PLAN_LIMIT' });
   try {
     let parsed;
     let kind;
@@ -69,6 +72,7 @@ router.post('/', requireUser, parseLimiter, upload.single('file'), async (req, r
       return res.status(400).json({ error: 'Provide a recipe as `text` or upload an image/PDF file.' });
     }
 
+    recordParseUsage(req.user.id);
     const preview = resolveRecipe(parsed.ingredients || []);
     res.json({
       kind,

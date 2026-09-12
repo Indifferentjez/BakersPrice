@@ -125,6 +125,18 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Password reset links. Only the sha256 hash of the token is stored, so a DB
+-- dump alone can never be replayed into an account takeover.
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
+
 CREATE TABLE IF NOT EXISTS user_cost_defaults (
   user_id            TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   hourly_rate        REAL,
@@ -175,6 +187,12 @@ ensureColumn('recipes', 'ingredient_overrides_json', 'ingredient_overrides_json 
 ensureColumn('recipes', 'user_id', 'user_id TEXT REFERENCES users(id)');
 ensureColumn('quotes', 'user_id', 'user_id TEXT REFERENCES users(id)');
 ensureColumn('calculations', 'user_id', 'user_id TEXT REFERENCES users(id)');
+// Plans + billing
+ensureColumn('users', 'plan', "plan TEXT NOT NULL DEFAULT 'free'");
+ensureColumn('users', 'stripe_customer_id', 'stripe_customer_id TEXT');
+ensureColumn('users', 'stripe_subscription_id', 'stripe_subscription_id TEXT');
+ensureColumn('users', 'parse_count_month', 'parse_count_month INTEGER NOT NULL DEFAULT 0');
+ensureColumn('users', 'parse_count_reset', 'parse_count_reset TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_recipes_user_id ON recipes(user_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_quotes_user_id ON quotes(user_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_calculations_user_id ON calculations(user_id)');

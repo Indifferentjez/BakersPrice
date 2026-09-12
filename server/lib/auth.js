@@ -16,6 +16,9 @@ const insertUser = db.prepare(`
   VALUES (@id, @email, @name, @password_hash, @google_sub, datetime('now'))
 `);
 const getUserById = db.prepare('SELECT * FROM users WHERE id = ?');
+export function findUserById(id) {
+  return getUserById.get(id);
+}
 const getUserByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
 const getUserByGoogle = db.prepare('SELECT * FROM users WHERE google_sub = ?');
 const countUsers = db.prepare('SELECT COUNT(*) AS n FROM users');
@@ -93,9 +96,31 @@ export function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function isAdminEmail(email) {
+  const admin = normalizeEmail(process.env.ADMIN_EMAIL);
+  const target = normalizeEmail(email);
+  return Boolean(admin && target && admin === target);
+}
+
 export function publicUser(row) {
   if (!row) return null;
-  return { id: row.id, email: row.email, name: row.name || null };
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name || null,
+    isAdmin: isAdminEmail(row.email),
+    plan: row.plan || 'free',
+  };
+}
+
+export function requireAdmin(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Sign in required', code: 'UNAUTHENTICATED' });
+  }
+  if (!req.user.isAdmin) {
+    return res.status(403).json({ error: 'Admin only.' });
+  }
+  next();
 }
 
 export function hashPassword(plain) {
@@ -232,4 +257,49 @@ export function writeUserDefaults(userId, fields) {
 
 export function ownsRecipe(recipeId, userId) {
   return db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId) || null;
+}
+
+// ---------------------------------------------------------------- password reset
+const RESET_TOKEN_HOURS = 1;
+const insertResetToken = db.prepare(`
+  INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, created_at)
+  VALUES (@id, @user_id, @token_hash, @expires_at, datetime('now'))
+`);
+const getResetTokenByHash = db.prepare('SELECT * FROM password_reset_tokens WHERE token_hash = ?');
+const markResetTokenUsed = db.prepare("UPDATE password_reset_tokens SET used_at = datetime('now') WHERE id = ?");
+const invalidateUserResetTokens = db.prepare(
+  "UPDATE password_reset_tokens SET used_at = datetime('now') WHERE user_id = ? AND used_at IS NULL",
+);
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+// Mints a one-hour reset token, invalidating any earlier unused one for this
+// user. Only the hash is persisted — the raw token is returned once, for the
+// email link, and never stored.
+export function createPasswordResetToken(userId) {
+  invalidateUserResetTokens.run(userId);
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_HOURS * 60 * 60 * 1000)
+    .toISOString().replace('T', ' ').slice(0, 19);
+  insertResetToken.run({
+    id: crypto.randomUUID(),
+    user_id: userId,
+    token_hash: hashToken(token),
+    expires_at: expiresAt,
+  });
+  return token;
+}
+
+// Verifies + single-uses a reset token. Returns the owning userId, or null if
+// the token is unknown, already used, or expired.
+export function consumePasswordResetToken(token) {
+  if (!token) return null;
+  const row = getResetTokenByHash.get(hashToken(token));
+  if (!row || row.used_at) return null;
+  const expiresMs = new Date(String(row.expires_at).replace(' ', 'T') + 'Z').getTime();
+  if (expiresMs < Date.now()) return null;
+  markResetTokenUsed.run(row.id);
+  return row.user_id;
 }

@@ -18,6 +18,7 @@ export default function MasterIngredients() {
   const [importText, setImportText] = useState('');
   const [importMsg, setImportMsg] = useState(null);
   const { user } = useAuth();
+  const isAdmin = !!user?.isAdmin;
 
   const load = () => {
     setLoading(true);
@@ -89,7 +90,10 @@ export default function MasterIngredients() {
 
       <Err error={error} />
       {!user && (
-        <AuthCta>The catalogue is shared. Sign in to edit prices so guests cannot overwrite them.</AuthCta>
+        <AuthCta>The catalogue is shared. Only the site admin can edit prices, so guests cannot overwrite them.</AuthCta>
+      )}
+      {user && !isAdmin && (
+        <div className="infobox mb-3">Only the site admin can edit the shared catalogue. You can still read prices here.</div>
       )}
 
       <div className="panel">
@@ -103,7 +107,7 @@ export default function MasterIngredients() {
               <input id="ing-search" placeholder="flour, eggs…" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
           </div>
-          <button className="ghost" disabled={!user} onClick={() => setAdding((a) => !a)}>{adding ? 'Cancel' : 'New ingredient'}</button>
+          <button className="ghost" disabled={!isAdmin} onClick={() => setAdding((a) => !a)}>{adding ? 'Cancel' : 'New ingredient'}</button>
         </div>
         <p className="caption mt-2">
           Prices default to Aldi. Recipes use these automatically; a per-recipe override never changes them unless you push it here.
@@ -159,12 +163,12 @@ export default function MasterIngredients() {
                           <select value={d.priceUnit} onChange={(e) => setPriceDraft({ ...priceDraft, [it.key]: { ...d, priceUnit: e.target.value } })}>
                             {units.map((u) => <option key={u}>{u}</option>)}
                           </select>
-                          {dirty && user && <button className="sm" onClick={() => savePrice(it)}>Save</button>}
+                          {dirty && isAdmin && <button className="sm" onClick={() => savePrice(it)}>Save</button>}
                         </div>
                       </td>
                       <td data-label="Basis" className="muted">{it.priceBasis}</td>
                       <td data-label="">
-                        {user && <button className="danger sm" onClick={async () => { if (!confirm(`Delete ${it.displayName} from the catalogue?`)) return; await api.del(`/api/master-ingredients/${it.key}`); load(); }}>Delete</button>}
+                        {isAdmin && <button className="danger sm" onClick={async () => { if (!confirm(`Delete ${it.displayName} from the catalogue?`)) return; await api.del(`/api/master-ingredients/${it.key}`); load(); }}>Delete</button>}
                       </td>
                     </tr>
                   );
@@ -179,7 +183,7 @@ export default function MasterIngredients() {
         <h3>Bulk price import <span className="sub">paste your Aldi list — one per line: <code>name, unit, price</code> (or <code>name, price</code>)</span></h3>
         <textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder={'plain flour, kg, 1.09\ncaster sugar, kg, 0.89\nlarge eggs, each, 0.22\nbutter, kg, 1.79'} className="import-textarea" />
         <div className="row-actions mt-2">
-          <button onClick={runImport} disabled={!user || !importText.trim()}>Import prices</button>
+          <button onClick={runImport} disabled={!isAdmin || !importText.trim()}>Import prices</button>
           {importMsg && <span className="muted">{importMsg}</span>}
         </div>
       </div>
