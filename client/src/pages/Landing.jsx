@@ -25,7 +25,7 @@ export default function Landing() {
             <li>3 saved quotes</li>
             <li>Full costing &amp; pricing engine</li>
             <li>Shared ingredient price catalogue</li>
-            <li>Manual recipe entry (no auto-parsing)</li>
+            <li>Photo / PDF / paste auto-parsing — 5/month</li>
           </ul>
           <Link to="/signup">Start free</Link>
         </div>
@@ -34,7 +34,7 @@ export default function Landing() {
           <ul className="feature-list">
             <li>Unlimited recipes</li>
             <li>Unlimited quotes</li>
-            <li>Photo / PDF / paste auto-parsing — 40/month</li>
+            <li>Unlimited photo / PDF / paste auto-parsing</li>
             <li>Everything in Free</li>
           </ul>
           <Link to="/pricing">See pricing</Link>

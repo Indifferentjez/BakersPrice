@@ -403,12 +403,8 @@ function UploadStep({ llm, rawInput, setRawInput, doParseText, doParseFile, star
   // Server-key gate (llm) is separate from the per-user plan gate below — a
   // signed-out guest still sees the normal "sign in" flow via the 401 on click.
   let planBlockedReason = null;
-  if (user) {
-    if (user.plan !== 'pro') {
-      planBlockedReason = 'Photo/PDF/paste parsing is a Pro feature.';
-    } else if (limits && usage && usage.parseThisMonth >= limits.parseMonthly) {
-      planBlockedReason = `You've used all ${limits.parseMonthly} AI parses this month.`;
-    }
+  if (user && limits && limits.parseMonthly != null && usage && usage.parseThisMonth >= limits.parseMonthly) {
+    planBlockedReason = `You've used all ${limits.parseMonthly} AI parses this month.`;
   }
   const parseDisabled = !llm || busy || !!planBlockedReason;
   return (

@@ -4,8 +4,8 @@
 import { db } from '../db.js';
 
 export const LIMITS = {
-  free: { recipes: 3, quotes: 3, parseMonthly: 0 },
-  pro: { recipes: null, quotes: null, parseMonthly: 40 },
+  free: { recipes: 3, quotes: 3, parseMonthly: 5 },
+  pro: { recipes: null, quotes: null, parseMonthly: null },
 };
 
 function limitsFor(plan) {
@@ -64,11 +64,9 @@ export function ensureParseMonthCurrent(userId) {
 }
 
 export function canUseParse(userId, plan) {
-  if (plan !== 'pro') {
-    return { ok: false, reason: 'Photo/PDF/paste parsing is a Pro feature. Upgrade to Pro to use it.' };
-  }
+  const cap = limitsFor(plan).parseMonthly;
+  if (cap == null) return { ok: true };
   const used = ensureParseMonthCurrent(userId);
-  const cap = limitsFor('pro').parseMonthly;
   if (used >= cap) {
     return { ok: false, reason: `You've used all ${cap} AI parses this month. They reset at the start of next month.` };
   }

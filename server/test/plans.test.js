@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../index.js';
 import { db } from '../db.js';
+import { canUseParse } from '../lib/billing.js';
 
 function agent() {
   return request.agent(app);
@@ -44,7 +45,7 @@ describe('plan limits', () => {
 
     const me = await ag.get('/api/auth/me');
     expect(me.body.plan).toBe('free');
-    expect(me.body.limits).toEqual({ recipes: 3, quotes: 3, parseMonthly: 0 });
+    expect(me.body.limits).toEqual({ recipes: 3, quotes: 3, parseMonthly: 5 });
     expect(me.body.usage.recipes).toBe(3);
   });
 
@@ -76,11 +77,15 @@ describe('plan limits', () => {
     expect(blocked.body.code).toBe('PLAN_LIMIT');
   });
 
-  it('free plan can never parse; pro plan can, up to the 40/month cap', async () => {
+  it('free plan: 5 parses/month; pro plan is unlimited', async () => {
     const email = `parse-${crypto.randomUUID()}@example.com`;
     const ag = agent();
     await signup(ag, email);
 
+    const meFree = await ag.get('/api/auth/me');
+    expect(meFree.body.limits).toEqual({ recipes: 3, quotes: 3, parseMonthly: 5 });
+
+    db.prepare("UPDATE users SET parse_count_month = 5, parse_count_reset = strftime('%Y-%m','now') WHERE email = ?").run(email);
     const freeBlocked = await ag.post('/api/parse').send({ text: '200g plain flour' });
     expect(freeBlocked.status).toBe(402);
     expect(freeBlocked.body.code).toBe('PLAN_LIMIT');
@@ -88,17 +93,13 @@ describe('plan limits', () => {
     setPlan(email, 'pro');
     const me = await ag.get('/api/auth/me');
     expect(me.body.plan).toBe('pro');
-    expect(me.body.limits).toEqual({ recipes: null, quotes: null, parseMonthly: 40 });
-    expect(me.body.usage.parseThisMonth).toBe(0);
+    expect(me.body.limits).toEqual({ recipes: null, quotes: null, parseMonthly: null });
 
-    // simulate having already used the monthly cap, without 40 real LLM calls
+    // a high count must not trip the gate on Pro (unlimited). Do not POST
+    // /api/parse here — that would spend a real LLM call.
     db.prepare("UPDATE users SET parse_count_month = 40, parse_count_reset = strftime('%Y-%m','now') WHERE email = ?").run(email);
-    const capped = await ag.post('/api/parse').send({ text: '200g plain flour' });
-    expect(capped.status).toBe(402);
-    expect(capped.body.code).toBe('PLAN_LIMIT');
-
-    const meAfter = await ag.get('/api/auth/me');
-    expect(meAfter.body.usage.parseThisMonth).toBe(40);
+    const user = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    expect(canUseParse(user.id, 'pro')).toEqual({ ok: true });
   });
 
   it('pro plan: unlimited recipes and quotes', async () => {

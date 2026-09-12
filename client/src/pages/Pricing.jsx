@@ -34,7 +34,7 @@ export default function Pricing() {
             <li>3 saved quotes</li>
             <li>Full costing &amp; pricing engine</li>
             <li>Shared ingredient price catalogue</li>
-            <li>Manual recipe entry (no auto-parsing)</li>
+            <li>Photo / PDF / paste auto-parsing — 5/month</li>
           </ul>
           {!user && <Link to={`/signup?next=${encodeURIComponent(loc.pathname)}`}>Create a free account</Link>}
           {user && !isPro && <span className="muted">Your current plan</span>}
@@ -46,7 +46,7 @@ export default function Pricing() {
           <ul className="feature-list">
             <li>Unlimited recipes</li>
             <li>Unlimited quotes</li>
-            <li>Photo / PDF / paste auto-parsing — 40/month</li>
+            <li>Unlimited photo / PDF / paste auto-parsing</li>
             <li>Everything in Free</li>
           </ul>
 
