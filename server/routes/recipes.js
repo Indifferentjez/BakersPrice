@@ -3,6 +3,7 @@ import { db } from '../db.js';
 import { resolveRecipe } from '../lib/recipe.js';
 import { knownCakeType } from '../lib/classify.js';
 import { requireUser } from '../lib/auth.js';
+import { canCreateRecipe } from '../lib/billing.js';
 
 const router = Router();
 router.use(requireUser);
@@ -90,6 +91,8 @@ router.get('/:id', (req, res) => {
 });
 
 router.post('/', (req, res, next) => {
+  const gate = canCreateRecipe(req.user.id, req.user.plan);
+  if (!gate.ok) return res.status(402).json({ error: gate.reason, code: 'PLAN_LIMIT' });
   try {
     const row = bodyToRow(req.body || {});
     const info = insertStmt.run({ ...row, user_id: req.user.id });

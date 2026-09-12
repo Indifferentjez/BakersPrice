@@ -20,6 +20,10 @@ export function isUnauthenticated(err) {
   return err?.status === 401 || err?.data?.code === 'UNAUTHENTICATED';
 }
 
+export function isPlanLimited(err) {
+  return err?.status === 402 || err?.data?.code === 'PLAN_LIMIT';
+}
+
 export const api = {
   get: (u) => j('GET', u),
   post: (u, b) => j('POST', u, b),

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { db } from '../db.js';
 import { resolveRecipe } from '../lib/recipe.js';
 import { classify, CAKE_TYPES, knownCakeType } from '../lib/classify.js';
@@ -9,6 +10,16 @@ import { auditCalculation } from '../lib/audit.js';
 import { readUserDefaults, defaultsTemplate } from '../lib/auth.js';
 
 const router = Router();
+
+const calcLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.VITEST === 'true',
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: 'Too many calculations. Wait a bit and try again.' },
+});
 
 const getRecipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?');
 const getDefaultCalib = db.prepare('SELECT k_per_ml FROM calibrations WHERE recipe_id = ? AND is_recipe_default = 1 LIMIT 1');
@@ -27,7 +38,7 @@ router.get('/meta', (_req, res) => {
   });
 });
 
-router.post('/', (req, res) => {
+router.post('/', calcLimiter, (req, res) => {
   const body = req.body || {};
   const pan = body.pan || {};
   if (!pan.shape) return res.status(400).json({ error: 'pan.shape is required' });

@@ -1,4 +1,5 @@
-import { IconAlert } from './icons.jsx';
+import { useEffect, useRef, useState } from 'react';
+import { IconAlert, IconEye, IconEyeOff } from './icons.jsx';
 
 // Standard page-top block: title + one-line purpose + optional primary action.
 export function PageHeader({ title, subtitle, action }) {
@@ -9,6 +10,47 @@ export function PageHeader({ title, subtitle, action }) {
         {subtitle && <p>{subtitle}</p>}
       </div>
       {action && <div className="page-header__action">{action}</div>}
+    </div>
+  );
+}
+
+export function PasswordField({ id, name, autoComplete, value, onChange, ...rest }) {
+  const [shown, setShown] = useState(false);
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const form = wrapRef.current?.closest('form');
+    if (!form) return undefined;
+    const hide = () => {
+      if (inputRef.current) inputRef.current.type = 'password';
+      setShown(false);
+    };
+    form.addEventListener('submit', hide, true);
+    return () => form.removeEventListener('submit', hide, true);
+  }, []);
+
+  return (
+    <div className="password-field" ref={wrapRef}>
+      <input
+        ref={inputRef}
+        id={id}
+        name={name}
+        type={shown ? 'text' : 'password'}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={onChange}
+        {...rest}
+      />
+      <button
+        type="button"
+        className="password-field__toggle"
+        aria-label={shown ? 'Hide password' : 'Show password'}
+        aria-pressed={shown}
+        onClick={() => setShown((s) => !s)}
+      >
+        {shown ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+      </button>
     </div>
   );
 }

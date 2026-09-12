@@ -8,9 +8,12 @@
 # ⚠ FREE-TIER CONFIG. Two consequences:
 #   1. The service sleeps after ~15 min idle (first request after that is slow).
 #   2. The filesystem is wiped on every sleep and every redeploy, so the SQLite
-#      database does NOT persist — recipes / prices / quotes / accounts you enter
-#      are lost when it sleeps. `npm run seed` on start re-adds the sample recipe
-#      (unowned) so the first signup can claim it. Fine for testing; not for real use.
+#      database does NOT persist — recipes / prices / quotes / accounts / Stripe
+#      subscription links you create are all lost when it sleeps. There is no
+#      sample-recipe reseed on start (deliberately — see startCommand), so a
+#      fresh deploy starts completely empty. `npm run backup` does not help here
+#      either: it would just be backing up a file that's about to be wiped too.
+#      Fine for testing; not for real use.
 #
 # To PERSIST data: change `plan: free` -> `plan: starter` (~$7/mo), then
 # uncomment the `disk:` block and the DB_PATH env var at the bottom.
@@ -18,7 +21,7 @@
 # Auth: session cookies. SESSION_SECRET is generated below. Optional Google
 # sign-in needs GOOGLE_CLIENT_ID (OAuth Web client; JS origin = this service URL).
 # Customer quote pages /q/:id stay public. Ingredient catalogue GET is public;
-# price edits require a signed-in user.
+# price edits require a signed-in user whose email matches ADMIN_EMAIL.
 
 services:
   - type: web
@@ -28,7 +31,7 @@ services:
     region: frankfurt          # oregon | ohio | virginia | frankfurt | singapore
     branch: main
     buildCommand: npm install --include=dev && npm run build
-    startCommand: npm run seed || true && npm start
+    startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
@@ -63,6 +66,29 @@ services:
       # the better choice for a hosted test. Set to claude-opus-5 for top quality.
       - key: ANTHROPIC_MODEL
         value: claude-sonnet-5
+
+      # Catalogue price edits require a signed-in user whose email matches this
+      # exactly (case-insensitive). Leave unset and nobody — not even a signed-in
+      # baker — can edit/import ingredient prices (GET stays public regardless).
+      - key: ADMIN_EMAIL
+        sync: false
+
+      # Password reset email (Resend). Leave unset to keep reset "working" only
+      # in the sense that /forgot logs the link to this service's logs instead of
+      # emailing it — fine for testing, not for real users.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+      # Stripe billing (Pro plan, £12/mo). Leave all three unset to keep billing
+      # off — the Subscribe button shows "Billing not configured".
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_MONTHLY
+        sync: false
 
       # --- uncomment together with the disk block below (paid plan) ---
       # - key: DB_PATH

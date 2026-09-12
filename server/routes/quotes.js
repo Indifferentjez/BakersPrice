@@ -1,10 +1,22 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { db } from '../db.js';
 import { sizeLabel, weightLabel } from '../lib/labels.js';
 import { renderQuotePdf } from '../lib/quotePdf.js';
 import { requireUser, readUserDefaults } from '../lib/auth.js';
+import { canCreateQuote } from '../lib/billing.js';
 
 const router = Router();
+
+const quoteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.VITEST === 'true',
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: 'Too many quotes created. Wait a bit and try again.' },
+});
 
 const getCalc = db.prepare('SELECT * FROM calculations WHERE id = ? AND user_id = ?');
 const getQuote = db.prepare('SELECT * FROM quotes WHERE id = ?');
@@ -60,7 +72,9 @@ function hydrate(q) {
 
 router.get('/', requireUser, (req, res) => res.json(listQuotes.all(req.user.id)));
 
-router.post('/', requireUser, (req, res) => {
+router.post('/', quoteLimiter, requireUser, (req, res) => {
+  const gate = canCreateQuote(req.user.id, req.user.plan);
+  if (!gate.ok) return res.status(402).json({ error: gate.reason, code: 'PLAN_LIMIT' });
   const b = req.body || {};
   const d = readUserDefaults(req.user.id);
   const businessName = b.businessName ?? d.business_name ?? null;

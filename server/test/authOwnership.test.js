@@ -64,6 +64,13 @@ describe('auth + recipe ownership', () => {
     expect(list.body.some((r) => r.name === 'Orphan loaf')).toBe(true);
   });
 
+  it('GET /config reports ephemeralStorage only on Render without DB_PATH', async () => {
+    const r = await agent().get('/api/auth/config');
+    expect(r.status).toBe(200);
+    expect(r.body.ephemeralStorage).toBe(false);
+    expect(r.body).toHaveProperty('googleClientId');
+  });
+
   it('signup creates a session and GET /me returns the user without secrets', async () => {
     const ag = agent();
     const user = await signup(ag, `me-${crypto.randomUUID()}@example.com`);

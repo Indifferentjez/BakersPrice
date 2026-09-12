@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, isUnauthenticated } from '../api.js';
-import { AuthCta, loginPath, useAuth } from '../auth.jsx';
+import { api, isUnauthenticated, isPlanLimited } from '../api.js';
+import { AuthCta, UpgradeCta, loginPath, useAuth } from '../auth.jsx';
 import { Badge, Range, Money, RatioBars, Checks, Err, EstimateBanner } from '../components.jsx';
 import { IconClose, IconPlus } from '../icons.jsx';
 
@@ -34,11 +34,12 @@ function clearDraft() {
 export default function Wizard() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { user } = useAuth();
+  const { user, limits, usage } = useAuth();
   const restored = useRef(false);
 
   const [step, setStep] = useState('upload');
   const [error, setError] = useState(null);
+  const [planLimitMsg, setPlanLimitMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const [recipeId, setRecipeId] = useState(id || null);
@@ -161,7 +162,7 @@ export default function Wizard() {
   }, [user, id]);
 
   const stepIndex = STEPS.findIndex((s) => s[0] === step);
-  const go = (s) => { setError(null); setStep(s); };
+  const go = (s) => { setError(null); setPlanLimitMsg(null); setStep(s); };
 
   // ================= UPLOAD =================
   const doParseText = async () => {
@@ -207,7 +208,7 @@ export default function Wizard() {
   };
 
   const saveRecipe = async () => {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setPlanLimitMsg(null);
     try {
       const payload = {
         name: name || 'Untitled recipe',
@@ -229,6 +230,10 @@ export default function Wizard() {
     } catch (err) {
       if (isUnauthenticated(err)) {
         goLoginToSave();
+        return null;
+      }
+      if (isPlanLimited(err)) {
+        setPlanLimitMsg(err.data?.error || 'You have reached your plan limit.');
         return null;
       }
       setError(err);
@@ -308,11 +313,12 @@ export default function Wizard() {
         ))}
       </div>
       <div className="step-current">{currentStepLabel}</div>
+      {planLimitMsg && <UpgradeCta>{planLimitMsg}</UpgradeCta>}
       <Err error={error} />
       {busy && <div className="progressbar" role="status" aria-label="Working" />}
 
       {step === 'upload' && (
-        <UploadStep {...{ llm, rawInput, setRawInput, doParseText, doParseFile, startManual, busy }} />
+        <UploadStep {...{ llm, rawInput, setRawInput, doParseText, doParseFile, startManual, busy, user, limits, usage }} />
       )}
 
       {step === 'confirm' && (
@@ -342,6 +348,7 @@ export default function Wizard() {
           calc, onQuote: () => go('quote'), onBack: () => go('pan'),
           menuItems, setMenuItems, pan,
           ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy,
+          isAdmin: !!user?.isAdmin,
         }} />
       )}
 
@@ -392,20 +399,34 @@ function numBake(b) {
 
 // ==================== STEP COMPONENTS ====================
 
-function UploadStep({ llm, rawInput, setRawInput, doParseText, doParseFile, startManual, busy }) {
+function UploadStep({ llm, rawInput, setRawInput, doParseText, doParseFile, startManual, busy, user, limits, usage }) {
+  // Server-key gate (llm) is separate from the per-user plan gate below — a
+  // signed-out guest still sees the normal "sign in" flow via the 401 on click.
+  let planBlockedReason = null;
+  if (user) {
+    if (user.plan !== 'pro') {
+      planBlockedReason = 'Photo/PDF/paste parsing is a Pro feature.';
+    } else if (limits && usage && usage.parseThisMonth >= limits.parseMonthly) {
+      planBlockedReason = `You've used all ${limits.parseMonthly} AI parses this month.`;
+    }
+  }
+  const parseDisabled = !llm || busy || !!planBlockedReason;
   return (
     <div className="panel stack">
       <h2>Add a recipe</h2>
       {!llm && <div className="warnbox">Auto-parsing is off (no API key on the server). Use “Enter manually”.</div>}
+      {llm && planBlockedReason && (
+        <UpgradeCta>{planBlockedReason}</UpgradeCta>
+      )}
       <div className="grid2">
         <div className="stack">
           <label>Paste the recipe (any format — grams, cups, mixed)</label>
           <textarea className="recipe-paste" value={rawInput} onChange={(e) => setRawInput(e.target.value)} placeholder={'2 cups plain flour\n200g caster sugar\n3 large eggs\n...'} />
-          <button disabled={!llm || busy || !rawInput.trim()} onClick={doParseText}>Parse pasted text</button>
+          <button disabled={parseDisabled || !rawInput.trim()} onClick={doParseText}>Parse pasted text</button>
         </div>
         <div className="stack">
           <label>…or upload a photo / PDF of the recipe card</label>
-          <input type="file" accept="image/*,application/pdf" disabled={!llm || busy} onChange={(e) => doParseFile(e.target.files[0])} />
+          <input type="file" accept="image/*,application/pdf" disabled={parseDisabled} onChange={(e) => doParseFile(e.target.files[0])} />
           <p className="muted muted-sm">
             The image or PDF is sent to the Claude API for transcription. You confirm every row before anything is used.
           </p>
@@ -716,7 +737,7 @@ function Calibrator({ recipeId, onSaved }) {
   );
 }
 
-function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }) {
+function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy, isAdmin }) {
   const [draft, setDraft] = useState(() => JSON.parse(JSON.stringify(ingredientOverrides || {})));
   const [pushMsg, setPushMsg] = useState(null);
   const lines = price.lines || [];
@@ -765,12 +786,15 @@ function IngredientPricePanel({ price, cur, ingredientOverrides, recalcWithOverr
       <div className="row-actions mt-2">
         <button className="sm" disabled={busy || !dirty} onClick={() => recalcWithOverrides(cleanOverrides(draft))}>Apply overrides &amp; re-price</button>
         <button className="ghost sm" disabled={busy} onClick={async () => { await saveOverridesToRecipe(cleanOverrides(draft)); setPushMsg('Saved to recipe.'); }}>Save overrides to this recipe</button>
-        <button className="subtle sm" disabled={busy || !Object.keys(draft).length}
-          onClick={async () => {
-            const r = await pushToMaster(draft, price.lines);
-            setPushMsg(r);
-          }}>Push overrides to master catalogue</button>
+        {isAdmin && (
+          <button className="subtle sm" disabled={busy || !Object.keys(draft).length}
+            onClick={async () => {
+              const r = await pushToMaster(draft, price.lines);
+              setPushMsg(r);
+            }}>Push overrides to master catalogue</button>
+        )}
         {pushMsg && <span className="muted">{pushMsg}</span>}
+        {!isAdmin && <span className="caption">Only the admin can update the shared catalogue.</span>}
       </div>
     </div>
   );
@@ -795,7 +819,7 @@ async function pushToMaster(draft, lines) {
   return `Updated ${n} master price(s).`;
 }
 
-function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }) {
+function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy, isAdmin }) {
   const { calc: c, price, audit, densitySource, cakeTypeKey } = calc;
   const cur = price.currency;
   const addToMenu = () => {
@@ -860,7 +884,7 @@ function ResultStep({ calc, onQuote, onBack, menuItems, setMenuItems, pan, ingre
         <p className="muted muted-sm">Weight rows scale by the mid factor; count rows scale to a whole number and show the estimated weight range. <Badge accuracy="CALCULATED" /></p>
       </div>
 
-      <IngredientPricePanel {...{ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy }} />
+      <IngredientPricePanel {...{ price, cur, ingredientOverrides, recalcWithOverrides, saveOverridesToRecipe, busy, isAdmin }} />
 
       <div className="panel">
         <h3>Cost &amp; price <span className="muted fw-normal">— baker-only, never shown to customers</span></h3>
@@ -975,6 +999,8 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
     } catch (e) { setErr(e); } finally { setBusy(false); }
   };
 
+  const planLimited = isPlanLimited(err);
+
   if (quote) {
     return (
       <div className="panel stack">
@@ -1003,7 +1029,7 @@ function QuoteStep({ calc, name, allergens, defaults, menuItems, setMenuItems, q
     <>
     <div className="panel stack">
       <h2>Build the customer quote</h2>
-      <Err error={err} />
+      {planLimited ? <UpgradeCta>{err.data?.error || 'You have reached your plan limit.'}</UpgradeCta> : <Err error={err} />}
       {(!user || !calc.calculationId) && (
         <AuthCta>Sign in to save this quote to your account. After you log in, save the recipe and re-run the calculation so the quote can be stored.</AuthCta>
       )}

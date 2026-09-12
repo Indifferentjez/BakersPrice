@@ -10,6 +10,19 @@ import Wizard from './wizard/Wizard.jsx';
 import CustomerPage from './pages/CustomerPage.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
+import ForgotPassword from './pages/ForgotPassword.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
+import Landing from './pages/Landing.jsx';
+import Pricing from './pages/Pricing.jsx';
+import Account from './pages/Account.jsx';
+import Privacy from './pages/Privacy.jsx';
+import Terms from './pages/Terms.jsx';
+
+function Home() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  return user ? <RecipeList /> : <Landing />;
+}
 
 function Shell({ children }) {
   const { user, logout } = useAuth();
@@ -53,15 +66,24 @@ function Shell({ children }) {
         </button>
         <div className={`site-nav${menuOpen ? ' open' : ''}`} id="site-nav">
           <nav className="nav">
-            <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>Recipes</NavLink>
-            <NavLink to="/quotes" className={({ isActive }) => (isActive ? 'active' : '')}>Quotes</NavLink>
-            <NavLink to="/ingredients" className={({ isActive }) => (isActive ? 'active' : '')}>Ingredients</NavLink>
-            <NavLink to="/defaults" className={({ isActive }) => (isActive ? 'active' : '')}>Defaults</NavLink>
+            {user ? (
+              <>
+                <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>Recipes</NavLink>
+                <NavLink to="/quotes" className={({ isActive }) => (isActive ? 'active' : '')}>Quotes</NavLink>
+                <NavLink to="/ingredients" className={({ isActive }) => (isActive ? 'active' : '')}>Ingredients</NavLink>
+                <NavLink to="/defaults" className={({ isActive }) => (isActive ? 'active' : '')}>Defaults</NavLink>
+              </>
+            ) : (
+              <>
+                <NavLink to="/new" className={({ isActive }) => (isActive ? 'active' : '')}>Try it</NavLink>
+                <NavLink to="/pricing" className={({ isActive }) => (isActive ? 'active' : '')}>Pricing</NavLink>
+              </>
+            )}
           </nav>
           <div className="nav-session">
             {user ? (
               <>
-                <span className="muted" title={user.email}>{user.email}</span>
+                <NavLink to="/account" className={({ isActive }) => (isActive ? 'active' : '')} title={user.email}>{user.email}</NavLink>
                 <button className="subtle sm" type="button" onClick={onLogout}>Log out</button>
               </>
             ) : (
@@ -81,7 +103,13 @@ export default function App() {
       <Route path="/q/:id" element={<CustomerPage />} />
       <Route path="/login" element={<Shell><Login /></Shell>} />
       <Route path="/signup" element={<Shell><Signup /></Shell>} />
-      <Route path="/" element={<Shell><RecipeList /></Shell>} />
+      <Route path="/forgot" element={<Shell><ForgotPassword /></Shell>} />
+      <Route path="/reset" element={<Shell><ResetPassword /></Shell>} />
+      <Route path="/" element={<Shell><Home /></Shell>} />
+      <Route path="/pricing" element={<Shell><Pricing /></Shell>} />
+      <Route path="/account" element={<Shell><Account /></Shell>} />
+      <Route path="/privacy" element={<Shell><Privacy /></Shell>} />
+      <Route path="/terms" element={<Shell><Terms /></Shell>} />
       <Route path="/ingredients" element={<Shell><MasterIngredients /></Shell>} />
       <Route path="/prices" element={<Shell><MasterIngredients /></Shell>} />
       <Route path="/defaults" element={<Shell><Defaults /></Shell>} />
